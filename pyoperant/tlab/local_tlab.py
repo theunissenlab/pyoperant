@@ -5,7 +5,7 @@ import argparse
 from functools import wraps
 
 from pyoperant import hwio, components, panels, utils, InterfaceError
-from pyoperant.interfaces import pyaudio_, arduino_, nidaq_
+from pyoperant.interfaces import pyaudio_, arduino_
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ class Thing13(Panel125):
         super(Thing13, self).__init__(name="Tyler Laptop",
                                       arduino="/dev/ttyACM0",
                                       speaker="pulse", *args, **kwargs)
-                                      
+
 
 # Scripting methods
 def test_box(args):

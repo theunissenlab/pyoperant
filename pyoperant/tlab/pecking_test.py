@@ -162,7 +162,7 @@ def run_pecking_test(args):
 
     # Modify the bird name
     if args.bird is not None:
-        parameters["subject"].name = args.bird
+        parameters["subject_name"] = args.bird
 
     # Modify the experimenter name
     if args.experimenter is not None:
@@ -171,11 +171,11 @@ def run_pecking_test(args):
     # Modify the output directory
     if args.outputdir is not None:
         parameters["experiment_path"] = os.path.join(args.outputdir,
-                                                     parameters["subject"].name,
+                                                     parameters["subject_name"],
                                                      dt.datetime.now().strftime("%d%m%y"))
     else:
         parameters["experiment_path"] = os.path.join(parameters["experiment_path"],
-                                                     parameters["subject"].name,
+                                                     parameters["subject_name"],
                                                      dt.datetime.now().strftime("%d%m%y"))
 
     if not os.path.exists(parameters["experiment_path"]):
