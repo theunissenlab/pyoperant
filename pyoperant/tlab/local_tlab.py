@@ -69,7 +69,7 @@ class Panel125(panels.BasePanel):
         # Create input and output for the pecking key
         button = hwio.BooleanInput(name="Pecking key input",
                                    interface=arduino,
-                                   params=dict(channel=4, invert=True))
+                                   params=dict(channel=4, invert=True, suppress_longpress=True))
         light = hwio.BooleanOutput(name="Pecking key light",
                                    interface=arduino,
                                    params=dict(channel=8))
