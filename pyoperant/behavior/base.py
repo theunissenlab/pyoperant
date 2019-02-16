@@ -582,6 +582,9 @@ class BaseExp(object):
             logger.info("Finished all sessions.")
             self.end()
 
+    def await_trigger(self):
+        pass
+
     # Defining the different trial states. If any of these are not needed by the behavior, just don't define them in your subclass
     def trial_pre(self):
         pass

@@ -5,7 +5,7 @@ import argparse
 from functools import wraps
 
 from pyoperant import hwio, components, panels, utils, InterfaceError, events
-from pyoperant.interfaces import nidaq_
+from pyoperant.interfaces import nidaq_, keyboard_
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class Panel131(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Dev1", channel="ao0", input_channel=None, name=None, *args, **kwargs):
+    def __init__(self, speaker="Dev1", channel="ao0", input_channel=None, name=None, keyboard_trigger=False, *args, **kwargs):
         super(Panel131, self).__init__(self, *args, **kwargs)
         self.name = name
 
@@ -64,6 +64,12 @@ class Panel131(panels.BasePanel):
                                               interface=speaker_out,
                                               params={"channel": speaker + "/" + input_channel,
                                                       "invert": True})
+            self.inputs.append(boolean_input)
+            self.button = components.Button(IR=boolean_input)
+        elif keyboard_trigger:
+            keyboard = keyboard_.KeyboardTrigger()
+            boolean_input = hwio.BooleanInput(name="Keyboard",
+                                              interface=keyboard)
             self.inputs.append(boolean_input)
             self.button = components.Button(IR=boolean_input)
 

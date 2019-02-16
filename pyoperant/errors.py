@@ -43,3 +43,7 @@ class ComponentError(Exception):
 class WriteCannotBeReadError(Exception):
     '''raised when an interface configured to write output cannot be read '''
     pass
+
+class StimulusMissing(Exception):
+    """Raise when a stimulus cannot be located"""
+    pass

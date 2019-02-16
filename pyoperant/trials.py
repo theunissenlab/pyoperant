@@ -1,6 +1,6 @@
 import logging
 import datetime as dt
-from pyoperant import EndSession
+from pyoperant import EndSession, StimulusMissing
 from pyoperant.events import events
 
 logger = logging.getLogger(__name__)
@@ -94,8 +94,15 @@ class Trial(object):
 
         self.experiment.this_trial = self
 
+        # Wait for the trigger to start the trial
+        self.experiment.await_trigger()
+
         # Get the stimulus
-        self.stimulus = self.condition.get()
+        try:
+            self.stimulus = self.condition.get()
+        except StimulusMissing:
+            logger.warn("Could not find stimulus for this trial.\n{}\nAborting.".format(self.condition))
+            return
 
         # Any pre-trial logging / computations
         self.experiment.trial_pre()

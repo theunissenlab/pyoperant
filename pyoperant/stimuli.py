@@ -3,7 +3,9 @@ import os
 import wave
 import logging
 import random
+from collections import defaultdict
 from contextlib import closing
+from pyoperant import StimulusMissing
 from pyoperant.utils import Event, filter_files
 
 logger = logging.getLogger(__name__)
@@ -139,24 +141,30 @@ class StimulusCondition(object):
         self.is_punished = is_punished
         self.shuffle = shuffle
         self.replacement = replacement
+        self.file_path = file_path
+        self.files = files
+        self.file_pattern = file_pattern
+        self.recursive = recursive
 
-        if files is None:
-            self.files = filter_files(file_path,
-                                      file_pattern=file_pattern,
-                                      recursive=recursive)
-        else:
-            self.files = files
-
-        self._index_list = range(len(self.files))
-        if self.shuffle:
-            random.shuffle(self._index_list)
+        self.setup_stimuli_list(files)
 
         logger.debug("Created new condition: %s" % self)
 
     def __str__(self):
-
         return "".join(["Condition %s: " % self.name,
                         "# files = %d" % len(self.files)])
+
+    def setup_stimuli_list(self):
+        if self.files is None:
+            self.files = filter_files(self.file_path,
+                                      file_pattern=self.file_pattern,
+                                      recursive=self.recursive)
+        else:
+            self.files = self.files
+
+        self._index_list = range(len(self.files))
+        if self.shuffle:
+            random.shuffle(self._index_list)
 
     def get(self):
         """ Gets a single file from this condition's list of files. If
@@ -194,3 +202,53 @@ class StimulusConditionWav(StimulusCondition):
         wavfile = super(StimulusConditionWav, self).get()
 
         return AuditoryStimulus.from_wav(wavfile)
+
+
+class DynamicStimulusCondition(StimulusCondition):
+    """Stimulus condition that always pulls from updated directory
+
+    Stimulus condition that allows for a dynamically updated stimulus directory
+    during the experiment. This is being included in order to play back sounds
+    that were recorded online during the same experiment.
+
+    The base StimulusCondition only reads the directory contents once
+    (during initialization)
+    """
+    def __init__(self, *args, order="last_modified", **kwargs):
+        self.order = order
+
+        valid_orderings = {"last_modified", "random", None}
+        if order not in valid_orderings:
+            raise ValueError("Invalid order, must be in {}".format(valid_orderings))
+
+        self.file_access_counter = defaultdict(int)
+        super(DynamicStimulusCondition, self).__init__(*args, **kwargs)
+
+    def setup_stimuli_list(self):
+        files = filter_files(self.file_path,
+                                  file_pattern=self.file_pattern,
+                                  recursive=self.recursive)
+        for file in files:
+            # Create an entry for the file
+            self.file_access_counter[file] += 0
+
+        self.files = list(self.file_access_counter.keys())
+
+    def get(self):
+        self.setup_stimuli_list()
+
+        if self.replacement is True:
+            valid_files = self.files
+        else:
+            valid_files = [f for f, c in self.file_access_counter.items() if c == 0]
+
+        if not len(valid_files):
+            raise StimulusMissing
+
+        if self.order is None or self.order == "random":
+            file_selected = random.choice(valid_files)
+        elif self.order == "last_modified":
+            file_selected = max(valid_files, key=os.path.getmtime)
+
+        logger.debug("Selected file {}".format(file_selected))
+        return file_selected
