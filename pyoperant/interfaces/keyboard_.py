@@ -3,7 +3,8 @@ from pyoperant.interfaces import console_
 
 class KeyboardTrigger(console_.ConsoleInterface):
 
-    def __init__(self, *args, trigger_on=None, **kwargs):
+    def __init__(self, *args, **kwargs):
+        trigger_on = kwargs.pop("trigger_on", None)
         super(KeyboardTrigger, self).__init__(*args,**kwargs)
         self.trigger_on = trigger_on
 

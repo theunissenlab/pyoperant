@@ -35,13 +35,25 @@ class Panel131(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Dev1", channel="ao0", input_channel=None, name=None, keyboard_trigger=False, *args, **kwargs):
+    def __init__(self,
+            speaker="Dev1",
+            channel="ao0",
+            input_channel=None,
+            name=None,
+            keyboard_trigger=False,
+            use_nidaq=True,
+            *args,
+            **kwargs):
+
         super(Panel131, self).__init__(self, *args, **kwargs)
         self.name = name
 
         # Initialize interfaces
-        speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
-                                                   clock_channel="/Dev1/PFI0")
+        if use_nidaq:
+            speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
+                                                       clock_channel="/Dev1/PFI0")
+        else:
+            speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
 
         # Create a digital to analog event handler
         analog_event_handler = events.EventDToAHandler(channel=speaker + "/" + "ao1",
@@ -105,3 +117,33 @@ class PanelWithInput(Panel131):
 
         super(PanelWithInput, self).__init__(name="Panel with input",
                                              input_channel="port0/line5")
+
+class Panel131KeyboardTriggered(Panel131):
+    """ The chronic recordings box in room 131
+
+    The speaker should probably be the address of the nidaq card
+
+    Parameters
+    ----------
+    name: string
+        Name of this box
+    speaker: string
+        Speaker device name for this box
+    channel: string
+        The channel name for the analog output
+    input_channel: string
+        The channel name for a boolean input (e.g. perch or peck-port)
+        Default None means no input configured
+
+    Attributes
+    ----------
+
+    Examples
+    --------
+    """
+    def __init__(self, *args, **kwargs):
+
+        super(PanelWithInput, self).__init__(
+            speaker="Speakers (High Definition Audio",
+            keyboard_trigger=True,
+            use_nidaq=False)

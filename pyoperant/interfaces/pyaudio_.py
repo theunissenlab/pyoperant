@@ -50,12 +50,15 @@ def log_alsa_warnings():
     for asound_library in ["libasound.so", "libasound.so.2"]:
         try:
             asound = cdll.LoadLibrary(asound_library)
-            break
         except OSError:
             continue
-    asound.snd_lib_error_set_handler(c_error_handler)
-    yield
-    asound.snd_lib_error_set_handler(None)
+        else:
+            asound.snd_lib_error_set_handler(c_error_handler)
+            yield
+            asound.snd_lib_error_set_handler(None)
+            break
+    else:
+        yield
 
 
 class PyAudioInterface(base_.AudioInterface):

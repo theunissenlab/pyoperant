@@ -146,7 +146,7 @@ class StimulusCondition(object):
         self.file_pattern = file_pattern
         self.recursive = recursive
 
-        self.setup_stimuli_list(files)
+        self.setup_stimuli_list()
 
         logger.debug("Created new condition: %s" % self)
 
@@ -214,8 +214,8 @@ class DynamicStimulusCondition(StimulusCondition):
     The base StimulusCondition only reads the directory contents once
     (during initialization)
     """
-    def __init__(self, *args, order="last_modified", **kwargs):
-        self.order = order
+    def __init__(self, *args, **kwargs):
+        self.order = kwargs.pop("order", None)
 
         valid_orderings = {"last_modified", "random", None}
         if order not in valid_orderings:
