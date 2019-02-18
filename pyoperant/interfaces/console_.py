@@ -36,7 +36,7 @@ class ConsoleInterface(base_.BaseInterface):
             prompt = "Timeout?"
         else:
             prompt = "Press enter"
-        value = self.read(prompt=prompt, **kwargs)
+        value = self._read(prompt=prompt, **kwargs)
 
         if value:
             return dt.datetime.now()

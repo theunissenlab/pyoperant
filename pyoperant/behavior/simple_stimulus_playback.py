@@ -52,6 +52,8 @@ class SimpleStimulusPlayback(base.BaseExp):
                       'stimulus_name',
                       'intertrial_interval']
 
+    StimulusCondition = stimuli.StimulusConditionWav
+
     def __init__(self, intertrial_interval=2.0, stimulus_directory=None,
                  queue=queues.random_queue, reinforcement=None,
                  queue_parameters=None, *args, **kwargs):
@@ -74,11 +76,12 @@ class SimpleStimulusPlayback(base.BaseExp):
                 name = stim_dict.get("name", "Playback%d" % ii)
                 directory = stim_dict["directory"]
                 # Create a stimulus condition for this directory
-                condition = stimuli.StimulusConditionWav(name=name,
-                                                         file_path=directory,
-                                                         is_rewarded=False,
-                                                         is_punished=False,
-                                                         response=False)
+                condition = self.StimulusCondition(
+                    name=name,
+                    file_path=directory,
+                    is_rewarded=False,
+                    is_punished=False,
+                    response=False)
 
                 # Create a block for this condition
                 block = blocks_.Block([condition],

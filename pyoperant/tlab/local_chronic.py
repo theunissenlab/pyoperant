@@ -5,7 +5,7 @@ import argparse
 from functools import wraps
 
 from pyoperant import hwio, components, panels, utils, InterfaceError, events
-from pyoperant.interfaces import nidaq_, keyboard_
+from pyoperant.interfaces import nidaq_, keyboard_, pyaudio_
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ class Panel131KeyboardTriggered(Panel131):
     """
     def __init__(self, *args, **kwargs):
 
-        super(PanelWithInput, self).__init__(
-            speaker="Speakers (High Definition Audio",
+        super(Panel131KeyboardTriggered, self).__init__(
+            speaker="Built-in Output",
             keyboard_trigger=True,
             use_nidaq=False)

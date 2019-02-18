@@ -209,18 +209,14 @@ class DynamicStimulusCondition(StimulusCondition):
 
     Stimulus condition that allows for a dynamically updated stimulus directory
     during the experiment. This is being included in order to play back sounds
-    that were recorded online during the same experiment.
+    that were recorded online during the same experimentself.
+
+    Always plays the most recently added stimulus.
 
     The base StimulusCondition only reads the directory contents once
     (during initialization)
     """
     def __init__(self, *args, **kwargs):
-        self.order = kwargs.pop("order", None)
-
-        valid_orderings = {"last_modified", "random", None}
-        if order not in valid_orderings:
-            raise ValueError("Invalid order, must be in {}".format(valid_orderings))
-
         self.file_access_counter = defaultdict(int)
         super(DynamicStimulusCondition, self).__init__(*args, **kwargs)
 
@@ -245,10 +241,24 @@ class DynamicStimulusCondition(StimulusCondition):
         if not len(valid_files):
             raise StimulusMissing
 
-        if self.order is None or self.order == "random":
-            file_selected = random.choice(valid_files)
-        elif self.order == "last_modified":
-            file_selected = max(valid_files, key=os.path.getmtime)
+        # Play the most recently added stimulus file
+        file_selected = max(valid_files, key=os.path.getmtime)
 
         logger.debug("Selected file {}".format(file_selected))
         return file_selected
+
+
+class DynamicStimulusConditionWav(DynamicStimulusCondition):
+    """ Modifies DynamicStimulusCondition to only include .wav files. For usage
+    information see DynamicStimulusCondition.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(DynamicStimulusConditionWav, self).__init__(file_pattern="*.wav",
+                                                   *args, **kwargs)
+
+    def get(self):
+        """ Gets an AuditoryStimulus instance from a chosen .wav file """
+        wavfile = super(DynamicStimulusConditionWav, self).get()
+
+        return AuditoryStimulus.from_wav(wavfile)
