@@ -39,6 +39,30 @@ def random_queue(items, weights=None, max_items=None):
         ii += 1
 
 
+def switching_queue(items, queue_parameters):
+    """Queue that allows for switching based on a global switch
+
+    Items must here be a dictionary with keys 'online' and 'offline'
+    and queue_parameters a nested dictionary with the same top-level keys
+    """
+    switch = queue_parameters["state"]
+    queue1 = random_queue([items["offline"]], **queue_parameters["offline"])
+    queue2 = random_queue([items["online"]], **queue_parameters["online"])
+
+    queue_depleted = False
+    while True:
+        # Check global switch for which condition to use:
+        if switch.state is "offline" and not queue_depleted:
+            try:
+                yield next(queue1)
+            except StopIteration:
+                queue_depleted = True
+        elif switch.state is "stop":
+            break
+        else:
+            yield next(queue2)
+
+
 def block_queue(items, repetitions=1, shuffle=False):
     """ Generator which samples items in blocks
 
@@ -374,7 +398,7 @@ class BaseHandler(object):
     queue: queue generator or class instance
         The queue that will be iterated over.
     queue_parameters: dict
-        All additional parameters used to initialize the queue.        
+        All additional parameters used to initialize the queue.
     """
 
     def __init__(self, queue, items, **queue_parameters):
