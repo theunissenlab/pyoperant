@@ -1,0 +1,76 @@
+---
+# Experiment description
+name: Prepared Playback and Online Triggered Stimuli Mixture
+description: >
+    Runs an experiment that mixes automatically triggered playbacks combined with manually triggered ones
+experimenter:
+    name: Theunissen Lab
+
+# Experiment properties
+subject_name: TesTes0000M
+
+# File paths
+stim_directory: &stims ""
+experiment_path: "" # This is the root directory and will be appended with subject and date
+
+# Panel
+panel: !!python/object/apply:pyoperant.tlab.local_chronic.Panel131KeyboardTriggered {}
+
+# Session details
+num_sessions: 1
+
+# Stimulus conditions
+conditions:
+    - &online !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.OnlineCondition
+      kwds:
+          file_path: !!python/object/apply:os.path.join [*stims, "online"]
+    - &offline !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.OfflineCondition
+      kwds:
+          file_path: !!python/object/apply:os.path.join [*stims, "offline"]
+
+# Block properties
+queue: !!python/name:pyoperant.queues.switching_queue
+queue_parameters:
+  online:
+  offline:
+    max_items: 40  # this hsould be whatever stims by whatever trials
+
+# Extra logging
+
+# Log key data during polling
+# log_polling: true
+# log_polling_file: "keydata.log"
+
+log_playback: true
+log_playback_file: "playback.log"
+
+# Log handler setup
+# Possible values are stream, file, email
+log_handlers:
+    # stream's only option is level. Overrides "debug" parameter for logging
+    stream:
+        level: !!python/name:logging.INFO
+    # file takes options of
+    # filename: a file under experiment_path
+    # level: a python logging level, written as "!!python/name:logging.LEVEL"
+    file:
+        filename: "experiment.log"
+        level: !!python/name:logging.DEBUG
+    # email takes options of
+    # mailhost: where the email is sent from
+    # toaddrs: a list of addresses to send to
+    # fromaddr: the address to send from
+    # subject: The subject line
+    # credentials: not sure
+    # secure: not sure
+    # level: a python logging level, written as "!!python/name:logging.LEVEL"
+    # email:
+    #     mailhost: localhost
+    #     toaddrs:
+    #         - *def_email
+    #     fromaddr: "Pyoperant <pyoperant@someemail.com"
+    #     subject: "pyoperant notice"
+    #     credentials: none
+    #     secure: none
+    #     level: !!python/name:logging.ERROR
+...
