@@ -1,15 +1,19 @@
 #!/usr/bin/env python
+import hashlib
 import os
 import sys
 import logging
 import csv
 import datetime as dt
-import random
 import numpy as np
+import random
+import time
 from pyoperant.behavior import base
 from pyoperant.errors import EndSession
 from pyoperant import states, trials, blocks
 from pyoperant import components, utils, reinf, queues, configure, stimuli, subjects
+
+from pyoperant.interfaces.utils import MessageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ class OnlineCondition(stimuli.DynamicStimulusConditionWav):
     No-Go stimuli).
     """
     def __init__(self, file_path="", recursive=False):
-        super(RewardedCondition, self).__init__(name="Online",
+        super(OnlineCondition, self).__init__(name="Online",
                                                 response=False,
                                                 is_rewarded=True,
                                                 is_punished=False,
@@ -27,23 +31,11 @@ class OnlineCondition(stimuli.DynamicStimulusConditionWav):
                                                 recursive=recursive)
 
 
-class OfflineCondition(stimuli.StimulusConditionWav):
+class NormalCondition(stimuli.StimulusConditionWav):
     """ Unrewarded stimuli are not consequated and should be pecked through
     (i.e. Go stimuli)
     """
     pass
-
-
-class State(object):
-    def __init__(self):
-        self._state = "offline"
-
-    def set(self, new_state):
-        self._state = new_state
-
-    @property
-    def state(self):
-        return self._state
 
 
 class ChronicWithOnlinePlayback(base.BaseExp):
@@ -60,13 +52,12 @@ class ChronicWithOnlinePlayback(base.BaseExp):
                       'stimulus_name',
                       'intertrial_interval']
 
-    def __init__(self, *args, **kwargs):
-        self.experiment_state = State()
-        kwargs["queue_parameters"]["state"] = self.experiment_state
+    def __init__(self, intertrial_interval=2.0, *args, **kwargs):
+        panel = kwargs.get("panel")
+        kwargs["queue_parameters"]["state"] = panel.gui_state
         super(ChronicWithOnlinePlayback, self).__init__(*args, **kwargs)
-
-        # Spin up a GUI here.
-        self.experiment_state.set("offline")
+        self.intertrial_interval = intertrial_interval
+        self.panel.gui.state["stimulus_dir"] = kwargs["conditions"]["online"].file_path
 
     def session_main(self):
         """ Runs the session by looping over the block queue and then running
@@ -81,15 +72,36 @@ class ChronicWithOnlinePlayback(base.BaseExp):
                 trial.run()
 
     def await_trigger(self):
+        """Handle GUI events and wait for appropriate trigger to start trial
+        """
         if isinstance(self.intertrial_interval, (list, tuple)):
             self.iti = np.random.uniform(*self.intertrial_interval)
         else:
             self.iti = self.intertrial_interval
 
-        utils.wait(self.iti)
+        if self.panel.pause_button.status() == True:
+            status = self.panel.quit_button.poll()
+        else:
+            status = self.panel.quit_button.poll(timeout=0)
 
-        if self.experiment_state.state == "online":
-            self.panel.button.poll()
+        if status == MessageStatus.QUIT:
+            raise KeyboardInterrupt
+        elif status == MessageStatus.ABORT:
+            raise trials.AbortTrial
+
+        self.panel.gui.clear_events()
+
+        condition = self.panel.condition_button.status()
+        if condition == "normal":
+            self.panel.gui.set_status({"iti": self.iti})
+            status = self.panel.quit_button.poll(timeout=self.iti)
+        elif condition == "online":
+            status = self.panel.play_button.poll()
+
+        if status == MessageStatus.QUIT:
+            raise KeyboardInterrupt
+        elif status == MessageStatus.ABORT:
+            raise trials.AbortTrial
 
     def trial_pre(self):
         """ Store data that is specific to this experiment, and compute a wait time for an intertrial interval
@@ -101,12 +113,17 @@ class ChronicWithOnlinePlayback(base.BaseExp):
 
     def stimulus_main(self):
         """ Queue the sound and play it, while adding metadata """
+        self.panel.gui.set_status("Playing stimulus {}.".format(
+            os.path.basename(self.this_trial.stimulus.file_origin)
+        ))
 
         logger.info("Trial %d - %s - %s" % (
                                      self.this_trial.index,
                                      self.this_trial.time.strftime("%H:%M:%S"),
                                      self.this_trial.stimulus.name
                                      ))
+
+        # TODO: put in  meta data whether this was an automatic or manual trial
 
         # Set up metadata
         repetition = int(self.this_trial.index / len(self.this_trial.condition.files))

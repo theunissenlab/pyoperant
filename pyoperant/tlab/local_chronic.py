@@ -5,7 +5,7 @@ import argparse
 from functools import wraps
 
 from pyoperant import hwio, components, panels, utils, InterfaceError, events
-from pyoperant.interfaces import nidaq_, keyboard_, pyaudio_
+from pyoperant.interfaces import nidaq_, keyboard_, pyaudio_, tkgui_
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +78,6 @@ class Panel131(panels.BasePanel):
                                                       "invert": True})
             self.inputs.append(boolean_input)
             self.button = components.Button(IR=boolean_input)
-        elif keyboard_trigger:
-            keyboard = keyboard_.KeyboardTrigger()
-            boolean_input = hwio.BooleanInput(name="Keyboard",
-                                              interface=keyboard)
-            self.inputs.append(boolean_input)
-            self.button = components.Button(IR=boolean_input)
 
     def reset(self):
 
@@ -141,9 +135,27 @@ class Panel131KeyboardTriggered(Panel131):
     Examples
     --------
     """
-    def __init__(self, *args, **kwargs):
 
-        super(Panel131KeyboardTriggered, self).__init__(
-            speaker="Built-in Output",
-            keyboard_trigger=True,
-            use_nidaq=False)
+    _default_sound_file = "/Users/kevinyu/Projects/pyoperant/GraLbl0457_110429-Song-10.wav"
+
+    def __init__(self, *args, **kwargs):
+        super(Panel131KeyboardTriggered, self).__init__(speaker="default", use_nidaq=False)
+
+        self.gui_state = {}
+        self.gui = tkgui_.TkInterface(self.gui_state)
+
+        condition_input = hwio.NonBooleanInput(name="condition", interface=self.gui, params={"key": "condition"})
+        self.inputs.append(condition_input)
+        self.condition_button = components.Button(IR=condition_input)
+
+        pause_input = hwio.BooleanInput(name="pause", interface=self.gui, params={"key": "paused"})
+        self.inputs.append(pause_input)
+        self.pause_button = components.Button(IR=pause_input)
+
+        quit_button = hwio.BooleanInput(name="quit", interface=self.gui, params={"key": "quit"})
+        self.inputs.append(quit_button)
+        self.quit_button = components.Button(IR=quit_button)
+
+        play_input = hwio.BooleanInput(name="play", interface=self.gui, params={"key": "play"})
+        self.inputs.append(play_input)
+        self.play_button = components.Button(IR=play_input)

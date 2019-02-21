@@ -1,0 +1,7 @@
+ipython==5.8.0
+nidaqmx==0.5.7
+numpy==1.16.1
+PyAudio==0.2.11
+pyephem==3.7.6.0
+PyYAML==3.13
+scipy==1.2.1

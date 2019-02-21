@@ -96,9 +96,13 @@ class Block(queues.BaseHandler):
 
         # Loop through the queue generator
         trial_index = 0
+        trial = None
         for condition in self.queue:
+            # If the last trial was not aborted, add one to the trial index
+            if trial is None or not trial.aborted:
+                trial_index += 1
+
             # Create a trial instance
-            trial_index += 1
             trial = trials.Trial(index=trial_index,
                                  experiment=self.experiment,
                                  condition=condition,

@@ -15,25 +15,29 @@ experiment_path: "" # This is the root directory and will be appended with subje
 
 # Panel
 panel: !!python/object/apply:pyoperant.tlab.local_chronic.Panel131KeyboardTriggered {}
+intertrial_interval: [3.5, 6.5]
 
 # Session details
 num_sessions: 1
 
 # Stimulus conditions
 conditions:
-    - &online !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.OnlineCondition
-      kwds:
-          file_path: !!python/object/apply:os.path.join [*stims, "online"]
-    - &offline !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.OfflineCondition
-      kwds:
-          file_path: !!python/object/apply:os.path.join [*stims, "offline"]
+    online:
+        &online !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.OnlineCondition
+        kwds:
+            file_path: !!python/object/apply:os.path.join [*stims, "online"]
+    normal:
+        &normal !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.NormalCondition
+        kwds:
+            file_path: !!python/object/apply:os.path.join [*stims, "normal"]
 
 # Block properties
 queue: !!python/name:pyoperant.queues.switching_queue
 queue_parameters:
-  online:
-  offline:
+  online_queue_parameters:
+  normal_queue_parameters:
     max_items: 40  # this hsould be whatever stims by whatever trials
+
 
 # Extra logging
 

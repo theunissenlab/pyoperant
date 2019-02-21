@@ -6,6 +6,10 @@ from pyoperant.events import events
 logger = logging.getLogger(__name__)
 
 
+class AbortTrial(Exception):
+    pass
+
+
 class Trial(object):
     """ Class that implements all basic functionality of a trial
 
@@ -67,6 +71,7 @@ class Trial(object):
         self.correct = False
         self.reward = False
         self.punish = False
+        self.aborted = False
 
         # Trial event information
         self.event = dict(name="Trial",
@@ -95,7 +100,12 @@ class Trial(object):
         self.experiment.this_trial = self
 
         # Wait for the trigger to start the trial
-        self.experiment.await_trigger()
+        try:
+            self.experiment.await_trigger()
+        except AbortTrial:
+            logger.info("Aborting trial.")
+            self.aborted = True
+            return
 
         # Get the stimulus
         try:
