@@ -99,7 +99,7 @@ class Trial(object):
 
         self.experiment.this_trial = self
 
-        # Wait for the trigger to start the trial
+        # Pre-pre trial (before stimulus is selected)
         try:
             self.experiment.await_trigger()
         except AbortTrial:
@@ -109,7 +109,7 @@ class Trial(object):
 
         # Get the stimulus
         try:
-            self.stimulus = self.condition.get()
+            self.stimulus = self.experiment.select_stimulus(self.condition)
         except StimulusMissing:
             logger.warn("Could not find stimulus for this trial.\n{}\nAborting.".format(self.condition))
             return

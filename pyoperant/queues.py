@@ -39,30 +39,30 @@ def random_queue(items, weights=None, max_items=None):
         ii += 1
 
 
-def switching_queue(items, state, online_queue_parameters, offline_queue_parameters):
+def switching_queue(items, state, online_queue_parameters, normal_queue_parameters):
     """Queue that allows for switching based on a global switch
 
     Items must here be a dictionary with keys 'online' and 'offline'
     and queue_parameters a nested dictionary with the same top-level keys
     """
-    if offline_queue_parameters is None:
-        offline_queue_parameters = {}
+    if normal_queue_parameters is None:
+        normal_queue_parameters = {}
     if online_queue_parameters is None:
         online_queue_parameters = {}
-    queue1 = random_queue([items["offline"]], **offline_queue_parameters)
-    queue2 = random_queue([items["online"]], **online_queue_parameters)
+    normal_queue = random_queue([items["normal"]], **normal_queue_parameters)
+    online_queue = random_queue([items["online"]], **online_queue_parameters)
 
     queue_depleted = False
     while True:
         # Check global switch for which condition to use:
         condition = state["condition"]
-        if condition is "normal" and not queue_depleted:
+        if condition == "normal" and not queue_depleted:
             try:
-                yield next(queue1)
+                yield next(normal_queue)
             except StopIteration:
                 queue_depleted = True
         else:
-            yield next(queue2)
+            yield next(online_queue)
 
 
 def block_queue(items, repetitions=1, shuffle=False):

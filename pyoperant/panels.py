@@ -1,4 +1,6 @@
 ## Panel classes
+from pyoperant import hwio
+
 
 class BasePanel(object):
     """Returns a panel instance.

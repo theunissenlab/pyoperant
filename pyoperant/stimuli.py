@@ -224,25 +224,23 @@ class DynamicStimulusCondition(StimulusCondition):
         files = filter_files(self.file_path,
                                   file_pattern=self.file_pattern,
                                   recursive=self.recursive)
-        for file in files:
-            # Create an entry for the file
-            self.file_access_counter[file] += 0
+        self.files = list(files)
 
-        self.files = list(self.file_access_counter.keys())
-
-    def get(self):
+    def get(self, selected=None):
         self.setup_stimuli_list()
 
-        if self.replacement is True:
-            valid_files = self.files
-        else:
-            valid_files = [f for f, c in self.file_access_counter.items() if c == 0]
+        valid_files = self.files
 
         if not len(valid_files):
             raise StimulusMissing
+        if selected is not None and selected not in valid_files:
+            raise StimulusMissing
 
-        # Play the most recently added stimulus file
-        file_selected = max(valid_files, key=os.path.getmtime)
+        if selected is None:
+            # Play the most recently added stimulus file
+            file_selected = max(valid_files, key=os.path.getmtime)
+        else:
+            file_selected = selected
 
         logger.debug("Selected file {}".format(file_selected))
         return file_selected
@@ -257,8 +255,8 @@ class DynamicStimulusConditionWav(DynamicStimulusCondition):
         super(DynamicStimulusConditionWav, self).__init__(file_pattern="*.wav",
                                                    *args, **kwargs)
 
-    def get(self):
+    def get(self, *args, **kwargs):
         """ Gets an AuditoryStimulus instance from a chosen .wav file """
-        wavfile = super(DynamicStimulusConditionWav, self).get()
+        wavfile = super(DynamicStimulusConditionWav, self).get(*args, **kwargs)
 
         return AuditoryStimulus.from_wav(wavfile)

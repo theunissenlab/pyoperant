@@ -98,7 +98,7 @@ class Block(queues.BaseHandler):
         trial_index = 0
         trial = None
         for condition in self.queue:
-            # If the last trial was not aborted, add one to the trial index
+            # Check if the last trial was aborted before incrementing
             if trial is None or not trial.aborted:
                 trial_index += 1
 
