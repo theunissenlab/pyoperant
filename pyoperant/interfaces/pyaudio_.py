@@ -118,7 +118,7 @@ class PyAudioInterface(base_.AudioInterface):
         """
         def _callback(in_data, frame_count, time_info, status):
             if not self._playing_wav.is_set():
-                return (0, pyaudio.paComplete)
+                return (None, pyaudio.paComplete)
 
             try:
                 cont = self.callback()
@@ -129,7 +129,7 @@ class PyAudioInterface(base_.AudioInterface):
                 data = self.wf.readframes(frame_count)
                 return (data, pyaudio.paContinue)
             else:
-                return (0, pyaudio.paComplete)
+                return (None, pyaudio.paComplete)
 
         self.stream = self.pa.open(format=self.pa.get_format_from_width(self.wf.getsampwidth()),
                                    channels=self.wf.getnchannels(),
@@ -138,6 +138,7 @@ class PyAudioInterface(base_.AudioInterface):
                                    output_device_index=self.device_index,
                                    start=False,
                                    stream_callback=_callback)
+
         if start:
             self._play_wav(event=event)
 
@@ -158,6 +159,7 @@ class PyAudioInterface(base_.AudioInterface):
         try:
             logger.debug("Attempting to close pyaudio stream")
             events.write(event)
+            self.stream.stop_stream()
             self.stream.close()
             logger.debug("Stream closed")
         except AttributeError:
