@@ -1,8 +1,10 @@
 from ctypes import *
 from contextlib import contextmanager
+import logging
+import threading
+
 import pyaudio
 import wave
-import logging
 from pyoperant.interfaces import base_
 from pyoperant import InterfaceError
 from pyoperant.events import events
@@ -81,6 +83,7 @@ class PyAudioInterface(base_.AudioInterface):
         self.stream = None
         self.wf = None
         self.callback = None
+        self._playing_wav = threading.Event()
         self.open()
 
     def open(self):
@@ -114,6 +117,9 @@ class PyAudioInterface(base_.AudioInterface):
         """
         """
         def _callback(in_data, frame_count, time_info, status):
+            if not self._playing_wav.is_set():
+                return (0, pyaudio.paComplete)
+
             try:
                 cont = self.callback()
             except TypeError:
@@ -143,10 +149,12 @@ class PyAudioInterface(base_.AudioInterface):
 
     def _play_wav(self, event=None, **kwargs):
         logger.debug("Playing wavfile")
+        self._playing_wav.set()
         events.write(event)
         self.stream.start_stream()
 
     def _stop_wav(self, event=None, **kwargs):
+        self._playing_wav.clear()
         try:
             logger.debug("Attempting to close pyaudio stream")
             events.write(event)
