@@ -1,9 +1,13 @@
 from ctypes import *
 from contextlib import contextmanager
+import os
 import logging
 import threading
+import numpy as np
+import scipy.io.wavfile
 
 import pyaudio
+import queue
 import wave
 from pyoperant.interfaces import base_
 from pyoperant import InterfaceError
@@ -76,16 +80,19 @@ class PyAudioInterface(base_.AudioInterface):
     https://www.assembla.com/spaces/portaudio/wiki/Tips_Callbacks
 
     """
-    def __init__(self, device_name="default", *args, **kwargs):
+    def __init__(self, device_name="default", input_rate=44100, *args, **kwargs):
         super(PyAudioInterface, self).__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
         self.stream = None
         self.wf = None
+        self.rate = input_rate
         self.callback = None
         self._playing_wav = threading.Event()
         self._recording = threading.Event()
         self.rec_queue = None
+        self.ongoing_threads = []
+        self.abort_signal = threading.Event()
         self.open()
 
     def open(self):
@@ -105,6 +112,11 @@ class PyAudioInterface(base_.AudioInterface):
 
     def close(self):
         logger.debug("Closing device")
+        self.abort_signal.set()
+        self.abort_signal = threading.Event()
+        for t in self.ongoing_threads:
+            t.join()
+
         try:
             self.stream.close()
         except AttributeError:
@@ -115,11 +127,10 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf = None
         self.pa.terminate()
 
-    def _get_output_stream(self, start=False, event=None, **kwargs):
+    def _get_stream(self, start=False, event=None, **kwargs):
         """
         """
         def _callback(in_data, frame_count, time_info, status):
-            print("here", self._playing_wav.is_set())
             if not self._playing_wav.is_set():
                 return (None, pyaudio.paComplete)
 
@@ -145,60 +156,74 @@ class PyAudioInterface(base_.AudioInterface):
         if start:
             self._play_wav(event=event)
 
-    def _get_input_stream(self, start=False, event=None, **kwargs):
-        self.rec_queue.clear()
-
-        def _callback(in_data, frame_count, time_info, status):
-            if not self._recording.is_set():
-                return (None, pyaudio.paComplete)
-
-            data = np.frombuffer(in_data, dtype=np.int16)
-            self.rec_queue.put(data)
-
-            return (in_data, pyaudio.paContinue)
-
-        self.stream = self.pa.open(
-            format=pyaudio.paInt16,
+    def _run_record(self, duration=None, dest=None, quit_signal=None, abort_signal=None):
+        chunk = 2048
+        stream = self.pa.open(format=pyaudio.paInt16,
             channels=1,
-            device=self.device_name,
-            frames_per_buffer=1024,
+            rate=self.rate,
             input=True,
             output=False,
-            stream_callback=_callback
+            frames_per_buffer=chunk)
+
+        frames = []
+        if quit_signal is not None:
+            while not quit_signal.is_set() and not abort_signal.is_set():
+                data = stream.read(chunk)
+                data = np.frombuffer(data, dtype=np.int16)
+                frames.append(data)
+
+        if duration is not None:
+            for i in range(0, int(self.rate / chunk * duration)):
+                if abort_signal.is_set():
+                    break
+                data = stream.read(chunk)
+                data = np.frombuffer(data, dtype=np.int16)
+                frames.append(data)
+
+        if not len(frames):
+            return
+        data = np.concatenate(frames)
+        
+        if not os.path.exists(os.path.dirname(dest)):
+            os.makedirs(os.path.dirname(dest))
+
+        scipy.io.wavfile.write(
+            dest,
+            self.rate,
+            data
         )
 
-        if start:
-            self._start_recording(event=event)
+    def _record(self, event=None, duration=0, dest=None, **kwargs):
+        new_quit_signal = threading.Event()
+
+        t = threading.Thread(
+            target=self._run_record,
+            args=(duration,),
+            kwargs={
+                "dest": dest,
+                "quit_signal": new_quit_signal,
+                "abort_signal": self.abort_signal
+            }
+        )
+        self.ongoing_threads.append(t)
+        t.start()
+        return t, new_quit_signal
+
+    def _stop_record(self, event=None, thread=None, quit_signal=None, **kwargs):
+        if quit_signal is not None:
+            quit_signal.set()
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         logger.debug("Queueing wavfile %s" % wav_file)
         self.wf = wave.open(wav_file)
         self.validate()
-        self._get_output_stream(start=start, event=event)
+        self._get_stream(start=start, event=event)
 
     def _play_wav(self, event=None, **kwargs):
         logger.debug("Playing wavfile")
         self._playing_wav.set()
         events.write(event)
         self.stream.start_stream()
-
-    def _start_recording(self, queue, event=None, **kwargs):
-        self.rec_queue = queue
-        logger.debug("Recording mic input")
-        self._recording.set()
-        events.write(event)
-        self.stream.start_stream()
-
-    def _stop_recording(self, event=None, **kwargs):
-        self._recording.clear()
-        try:
-            logger.debug("Attempting to close pyaudio stream")
-            events.write(event)
-            self.stream.stop_stream()
-            self.stream.close()
-            logger.debug("Stream closed")
-        except AttributeError:
-            self.stream = None
 
     def _stop_wav(self, event=None, **kwargs):
         self._playing_wav.clear()

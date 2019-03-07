@@ -38,6 +38,7 @@ class Panel131(panels.BasePanel):
 
     def __init__(self,
             speaker="Dev1",
+            mic=None,
             channel="ao0",
             input_channel=None,
             name=None,
@@ -65,6 +66,12 @@ class Panel131(panels.BasePanel):
                                      params={"channel": speaker + "/" + channel,
                                              "analog_event_handler": analog_event_handler})
 
+        if mic is not None:
+            self.mic_rate = 44100
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic, input_rate=self.mic_rate)
+            audio_in = hwio.AudioInput(interface=mic_in)
+            self.mic = components.Microphone(audio_in)
+
         # Add boolean hwios to inputs and outputs
         self.inputs = []
         self.outputs = [audio_out]
@@ -81,11 +88,11 @@ class Panel131(panels.BasePanel):
             self.button = components.Button(IR=boolean_input)
 
     def reset(self):
-
+        self.mic.input.interface.close()
         pass
 
     def sleep(self):
-
+        self.mic.input.interface.close()
         pass
 
     def ready(self):
@@ -140,8 +147,9 @@ class Panel131KeyboardTriggered(Panel131):
     _default_sound_file = "/Users/kevinyu/Projects/pyoperant/GraLbl0457_110429-Song-10.wav"
 
     def __init__(self, *args, **kwargs):
-        super(Panel131KeyboardTriggered, self).__init__(speaker="default", use_nidaq=False)
+        super(Panel131KeyboardTriggered, self).__init__(*args, **kwargs)
 
+        '''
         self.state = {}
         self.gui = tkgui_.TkInterface(self.state)
 
@@ -164,10 +172,11 @@ class Panel131KeyboardTriggered(Panel131):
         play_input = hwio.BooleanInput(name="play", interface=self.gui, params={"key": "play"})
         self.inputs.append(play_input)
         self.play_button = components.Button(IR=play_input)
+        '''
 
     def ready(self):
         super(Panel131, self).ready()
-        self.gui.open()
+        # self.gui.open()
 
     def sleep(self):
         super(Panel131, self).sleep()
