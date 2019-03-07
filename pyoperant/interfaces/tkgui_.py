@@ -118,11 +118,15 @@ class GUIThread(threading.Thread):
         self.known_files = []
         self.countdown = None
         self.root = None
+        self.quit_event = threading.Event()
         self.update_labels_after = None
 
         self.start()
 
     def quit(self):
+        self.quit_event.set()
+
+    def _quit(self):
         """Push quit message onto all queues and close Tk window
 
         Pushes MessageStatus.QUIT onto all queues so anyone polling
@@ -305,7 +309,7 @@ class GUIThread(threading.Thread):
             file_name = os.path.splitext(os.path.basename(stim_path))[0]
             self.next_stim_label_text.set("Queued\n{}".format(file_name))
 
-    def _update_labels(self):
+    def _periodic_loop(self):
         """Periodic callback to update labels without a specific trigger
 
         Repeats every 0.5 secondsself.
@@ -314,6 +318,10 @@ class GUIThread(threading.Thread):
         Updates the status message if any other threads have requested
         to change the message.
         """
+        if self.quit_event.is_set():
+            self._quit()
+            return
+
         files = glob.glob(os.path.join(self.state["stimulus_dir"], "*.wav"))
 
         files = sorted(files, key=os.path.getmtime, reverse=True)
@@ -345,7 +353,7 @@ class GUIThread(threading.Thread):
                 self._countdown(msg["iti"])
         self.event_queues["status_msg"].queue.clear()
 
-        self.update_labels_after = self.root.after(500, self._update_labels)
+        self._periodic_loop_after = self.root.after(500, self._periodic_loop)
 
     def _countdown(self, t):
         """Present a countdown status message that updates every second"""
@@ -364,13 +372,13 @@ class GUIThread(threading.Thread):
     def run(self):
         self.root = tk.Tk()
 
-        self.root.protocol("WM_DELETE_WINDOW", self.quit)
+        self.root.protocol("WM_DELETE_WINDOW", self._quit)
         self.root.title("Pyoperant Playback Stimulus Controller")
 
         self.setup_vars()
         self.setup()
 
-        self.update_labels_after = self.root.after(500, self._update_labels)
+        self._periodic_loop_after = self.root.after(500, self._periodic_loop)
 
         # Center window
         w = self.root.winfo_reqwidth()

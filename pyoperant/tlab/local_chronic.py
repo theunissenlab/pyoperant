@@ -7,6 +7,7 @@ from functools import wraps
 from pyoperant import hwio, components, panels, utils, InterfaceError, events
 from pyoperant.interfaces import nidaq_, keyboard_, pyaudio_, tkgui_
 
+
 logger = logging.getLogger(__name__)
 
 class Panel131(panels.BasePanel):
@@ -141,8 +142,8 @@ class Panel131KeyboardTriggered(Panel131):
     def __init__(self, *args, **kwargs):
         super(Panel131KeyboardTriggered, self).__init__(speaker="default", use_nidaq=False)
 
-        self.gui_state = {}
-        self.gui = tkgui_.TkInterface(self.gui_state)
+        self.state = {}
+        self.gui = tkgui_.TkInterface(self.state)
 
         condition_input = hwio.NonBooleanInput(name="condition", interface=self.gui, params={"key": "condition"})
         self.inputs.append(condition_input)

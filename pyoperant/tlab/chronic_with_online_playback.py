@@ -43,10 +43,11 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
 
     def __init__(self, intertrial_interval=2.0, *args, **kwargs):
         panel = kwargs.get("panel")
-        kwargs["queue_parameters"]["state"] = panel.gui_state
+        kwargs["queue_parameters"]["state"] = panel.state
+        panel.gui.state["stimulus_dir"] = kwargs["conditions"]["online"].file_path
+
         base.BaseExp.__init__(self, *args, **kwargs)
         self.intertrial_interval = intertrial_interval
-        self.panel.gui.state["stimulus_dir"] = kwargs["conditions"]["online"].file_path
 
     def await_trigger(self):
         """Waiting period before trial begins
