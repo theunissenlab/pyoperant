@@ -88,13 +88,13 @@ class Panel125(panels.BasePanel):
         if mic is not None:
             mic_in = pyaudio_.PyAudioInterface(device_name=mic)
             audio_in = hwio.AudioInput(interface=mic_in)
+            self.mic = components.Microphone(audio_in)
 
         # Add boolean hwios to inputs and outputs
         self.inputs = [button]
         self.outputs = [light, main_light, feeder]
 
         # Set up components
-        self.mic = components.Microphone(input=audio_in)
         self.speaker = components.Speaker(output=audio_out)
         self.peck_port = components.PeckPort(IR=button, LED=light)
         self.house_light = components.HouseLight(light=main_light)

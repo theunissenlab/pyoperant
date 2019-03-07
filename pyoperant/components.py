@@ -604,17 +604,21 @@ class Microphone(BaseComponent):
 
     def __init__(self, input_, *args, **kwargs):
 
-        super(Speaker, self).__init__(*args, **kwargs)
+        super(Microphone, self).__init__(*args, **kwargs)
         self.queue = queue.Queue()
         self.input = input_
 
-    def record(self, queue):
+    def record(self, duration=None, dest=None):
         self.event["action"] = "rec"
-        return self.input.start_recording(self.queue, event=self.event)
+        return self.input.start_recording(
+            event=self.event,
+            duration=duration,
+            dest=dest
+        )
 
-    def stop(self):
+    def stop(self, key=None):
         self.event["action"] = "stop"
-        self.input.stop_recording(event=self.event)
+        self.input.stop_recording(event=self.event, key=key)
 
 # ## Perch ##
 

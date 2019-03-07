@@ -52,6 +52,12 @@ class Panel131(panels.BasePanel):
                                      params={"channel": speaker + "/" + channel,
                                              "analog_event_handler": analog_event_handler})
 
+        if mic is not None:
+            self.mic_rate = 44100
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic, input_rate=self.mic_rate)
+            audio_in = hwio.AudioInput(interface=mic_in)
+            self.mic = components.Microphone(audio_in)
+
         # Add boolean hwios to inputs and outputs
         self.inputs = []
         self.outputs = [audio_out]
@@ -68,11 +74,11 @@ class Panel131(panels.BasePanel):
             self.button = components.Button(IR=boolean_input)
 
     def reset(self):
-
+        self.mic.input.interface.close()
         pass
 
     def sleep(self):
-
+        self.mic.input.interface.close()
         pass
 
     def ready(self):
