@@ -1,4 +1,5 @@
 import datetime
+import queue
 from pyoperant import hwio, utils, ComponentError
 
 class BaseComponent(object):
@@ -604,24 +605,16 @@ class Microphone(BaseComponent):
     def __init__(self, input_, *args, **kwargs):
 
         super(Speaker, self).__init__(*args, **kwargs)
+        self.queue = queue.Queue()
         self.input = input_
 
-    def record(self, nsamples):
-        """ Reads from input for a set number of samples
-
-        Parameters
-        ----------
-        nsamples: int
-            Number of samples to read from input
-
-        Returns
-        -------
-        numpy array
-            The analog signal recorded by input
-        """
-        # TODO: This should use a stop signal too, I think
+    def record(self, queue):
         self.event["action"] = "rec"
-        return self.input.read(nsamples, event=self.event)
+        return self.input.start_recording(self.queue, event=self.event)
+
+    def stop(self):
+        self.event["action"] = "stop"
+        self.input.stop_recording(event=self.event)
 
 # ## Perch ##
 
