@@ -76,7 +76,7 @@ class PyAudioInterface(base_.AudioInterface):
     https://www.assembla.com/spaces/portaudio/wiki/Tips_Callbacks
 
     """
-    def __init__(self,device_name='default',*args,**kwargs):
+    def __init__(self, device_name="default", *args, **kwargs):
         super(PyAudioInterface, self).__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
@@ -84,6 +84,8 @@ class PyAudioInterface(base_.AudioInterface):
         self.wf = None
         self.callback = None
         self._playing_wav = threading.Event()
+        self._recording = threading.Event()
+        self.rec_queue = None
         self.open()
 
     def open(self):
@@ -113,10 +115,11 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf = None
         self.pa.terminate()
 
-    def _get_stream(self, start=False, event=None, **kwargs):
+    def _get_output_stream(self, start=False, event=None, **kwargs):
         """
         """
         def _callback(in_data, frame_count, time_info, status):
+            print("here", self._playing_wav.is_set())
             if not self._playing_wav.is_set():
                 return (None, pyaudio.paComplete)
 
@@ -142,17 +145,60 @@ class PyAudioInterface(base_.AudioInterface):
         if start:
             self._play_wav(event=event)
 
+    def _get_input_stream(self, start=False, event=None, **kwargs):
+        self.rec_queue.clear()
+
+        def _callback(in_data, frame_count, time_info, status):
+            if not self._recording.is_set():
+                return (None, pyaudio.paComplete)
+
+            data = np.frombuffer(in_data, dtype=np.int16)
+            self.rec_queue.put(data)
+
+            return (in_data, pyaudio.paContinue)
+
+        self.stream = self.pa.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            device=self.device_name,
+            frames_per_buffer=1024,
+            input=True,
+            output=False,
+            stream_callback=_callback
+        )
+
+        if start:
+            self._start_recording(event=event)
+
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         logger.debug("Queueing wavfile %s" % wav_file)
         self.wf = wave.open(wav_file)
         self.validate()
-        self._get_stream(start=start, event=event)
+        self._get_output_stream(start=start, event=event)
 
     def _play_wav(self, event=None, **kwargs):
         logger.debug("Playing wavfile")
         self._playing_wav.set()
         events.write(event)
         self.stream.start_stream()
+
+    def _start_recording(self, queue, event=None, **kwargs):
+        self.rec_queue = queue
+        logger.debug("Recording mic input")
+        self._recording.set()
+        events.write(event)
+        self.stream.start_stream()
+
+    def _stop_recording(self, event=None, **kwargs):
+        self._recording.clear()
+        try:
+            logger.debug("Attempting to close pyaudio stream")
+            events.write(event)
+            self.stream.stop_stream()
+            self.stream.close()
+            logger.debug("Stream closed")
+        except AttributeError:
+            self.stream = None
 
     def _stop_wav(self, event=None, **kwargs):
         self._playing_wav.clear()

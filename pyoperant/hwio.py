@@ -485,3 +485,39 @@ class AudioOutput(BaseIO):
 
     def stop(self, event=None):
         return self.interface._stop_wav(event=event, **self.params)
+
+
+class AudioInput(BaseIO):
+    """
+    """
+
+    def __init__(self, interface=None, params={}, *args, **kwargs):
+        super(AudioOutput, self).__init__(interface=interface,
+                                          params=params,
+                                          *args,
+                                          **kwargs)
+
+        assert hasattr(self.interface, '_start_recording')
+        assert hasattr(self.interface, '_stop_recording')
+        self.config()
+
+    def config(self):
+        """ Calls the interface's config_write_analog method with the keyword
+        arguments in params
+
+        Returns
+        -------
+        bool
+            True if configuration succeeded
+        """
+        if not hasattr(self.interface, "_config_read_analog"):
+            return False
+
+        logger.debug("Configuring AudioInput to receive on interface % s" % self.interface)
+        return self.interface._config_read_analog(**self.params)
+
+    def start_recording(self, queue, event=None):
+        return self.interface._start_recording(queue, event=event, **self.params)
+
+    def stop_recording(self, event=None):
+        return self.interface._stop_recording(event=event, **self.params)

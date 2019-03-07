@@ -2,11 +2,12 @@
 import os
 import logging
 import datetime as dt
+import queue
 from pyoperant import configure
 from pyoperant import stimuli
 from pyoperant.tlab.custom_logging import PollingFilter, AudioPlaybackFilter
 from pyoperant.behavior.go_no_go_interrupt import GoNoGoInterrupt
-from pyoperant.tlab import local_tlab
+from pyoperant.tlab import local_tlab, record_trials
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class ProbeCondition(stimuli.StimulusConditionWav):
                                              shuffle=shuffle,
                                              *args, **kwargs)
 
-class PeckingTest(GoNoGoInterrupt):
+class PeckingTest(GoNoGoInterrupt, record_trials.RecordTrialsMixin):
     """A go no-go interruption experiment for the Theunissen lab
 
     Additional Parameters

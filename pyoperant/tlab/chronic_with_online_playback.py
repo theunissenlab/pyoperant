@@ -10,7 +10,7 @@ import random
 import time
 from pyoperant.behavior import base
 from pyoperant.errors import EndSession
-from pyoperant.tlab import chronic_playback
+from pyoperant.tlab import chronic_playback, record_trials
 from pyoperant import states, trials, blocks
 from pyoperant import components, utils, reinf, queues, configure, stimuli, subjects
 
@@ -39,7 +39,7 @@ class NormalCondition(stimuli.StimulusConditionWav):
     pass
 
 
-class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback):
+class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.RecordTrialsMixin):
 
     def __init__(self, intertrial_interval=2.0, *args, **kwargs):
         panel = kwargs.get("panel")
