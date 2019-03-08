@@ -384,16 +384,25 @@ class BaseHandler(object):
         # Store these in case we need to reset
         self._queue = queue
         self._items = items
+        self.consumed = False
 
         self.queue = queue(items=items, **queue_parameters)
         self.queue_parameters = queue_parameters
 
     def reset(self):
         """ Reset the queue """
-
+        self.consumed = False
         self.queue = self._queue(items=self._items, **self.queue_parameters)
 
-    def __iter__(self):
+    def __next__(self):
+        try:
+            return next(self.queue)
+        except StopIteration:
+            self.consumed = True
+            raise
 
-        for item in self.queue:
-            yield item
+    def next(self):
+        return self.__next__()
+
+    def __iter__(self):
+        return self

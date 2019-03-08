@@ -560,16 +560,19 @@ class BaseExp(object):
         self.session_start_time = dt.datetime.now()
         self.panel.ready()
 
-    def session_main(self):
-        """ Runs the session by looping over the block queue and then running
-        each trial in each block.
-        """
-
+    def trial_iter(self, block_queue):
         for self.this_block in self.block_queue:
             self.this_block.experiment = self
             logger.info("Beginning block #%d" % self.this_block.index)
             for trial in self.this_block:
-                trial.run()
+                yield trial
+
+    def session_main(self):
+        """ Runs the session by looping over the block queue and then running
+        each trial in each block.
+        """
+        for trial in self.trial_iter(self.block_queue):
+            trial.run()
 
     def session_post(self):
         """ Closes out the sessions

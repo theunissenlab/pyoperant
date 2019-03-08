@@ -7,7 +7,6 @@ import numpy as np
 import scipy.io.wavfile
 
 import pyaudio
-import queue
 import wave
 from pyoperant.interfaces import base_
 from pyoperant import InterfaceError
@@ -180,7 +179,7 @@ class PyAudioInterface(base_.AudioInterface):
         if not len(frames):
             return
         data = np.concatenate(frames)
-        
+
         if not os.path.exists(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
 

@@ -104,21 +104,26 @@ class GoNoGoInterrupt(base.BaseExp):
         self.start_immediately = False
         self.reward_value = reward_value
 
+    def trial_iter(self, block_queue):
+        for self.this_block in self.block_queue:
+            self.this_block.experiment = self
+            logger.info("Beginning block #%d" % self.this_block.index)
+            for trial in self.this_block:
+                if not self.start_immediately:
+                    logger.debug("Begin polling for a response")
+                    self.panel.response_port.poll()
+                yield trial
+
     def trial_pre(self):
         """ Initialize the trial and, if necessary, wait for a peck before
         starting stimulus playback.
         """
-
         logger.debug("Starting trial #%d" % self.this_trial.index)
         stimulus = self.this_trial.stimulus
         condition = self.this_trial.condition.name
         self.this_trial.annotate(stimulus_name=stimulus.file_origin,
                                  condition_name=condition,
                                  max_wait=stimulus.duration)
-
-        if not self.start_immediately:
-            logger.debug("Begin polling for a response")
-            self.panel.response_port.poll()
 
     def stimulus_main(self):
         """ Queue the stimulus and play it back """

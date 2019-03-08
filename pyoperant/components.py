@@ -1,5 +1,4 @@
 import datetime
-import queue
 from pyoperant import hwio, utils, ComponentError
 
 class BaseComponent(object):
@@ -605,7 +604,6 @@ class Microphone(BaseComponent):
     def __init__(self, input_, *args, **kwargs):
 
         super(Microphone, self).__init__(*args, **kwargs)
-        self.queue = queue.Queue()
         self.input = input_
 
     def record(self, duration=None, dest=None):
