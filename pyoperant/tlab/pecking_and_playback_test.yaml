@@ -12,7 +12,7 @@ subject_name: ColCol0000M
 # File paths
 stim_directory: &stims ""
 experiment_path: &root "" # This is the root directory and will be appended with subject and date
-recorded_audio_path: !!python/object/apply:os.path.join[*root, "audio_recordings"]
+recorded_audio_path: !!python/object/apply:os.path.join [*root, "audio_recordings"]
 
 # Panel
 panel: !!python/object/apply:pyoperant.tlab.local_tlab.Box6 {}
