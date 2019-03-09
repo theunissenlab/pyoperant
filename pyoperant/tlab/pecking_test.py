@@ -39,6 +39,24 @@ class ProbeCondition(stimuli.StimulusConditionWav):
                                              *args, **kwargs)
 
 
+class PlaybackCondition(stimuli.StimulusConditionWav):
+    """ Probe stimuli are not consequated and should be sampled as evenly as
+    possible. This is done by setting replacement to False and shuffle to True.
+    """
+
+    def __init__(self, name="Playback",
+                 response=False,
+                 is_rewarded=False,
+                 is_punished=False,
+                 *args, **kwargs):
+
+        super(PlaybackCondition, self).__init__(name=name,
+                                             response=response,
+                                             is_rewarded=is_rewarded,
+                                             is_punished=is_punished,
+                                             *args, **kwargs)
+
+
 class PeckingTest(GoNoGoInterrupt):
     """A go no-go interruption experiment for the Theunissen lab
 
@@ -215,10 +233,13 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
     def stimulus_pre(self):
         super(PeckingAndPlaybackTest, self).stimulus_pre()
+        if not self.panel.mic:
+            return
+
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
                 self.recording_key = self.panel.mic.record(
-                    duration=2,
+                    duration=None,
                     dest=self.get_wavfile_path()
                 )
                 break
@@ -294,10 +315,18 @@ def run_pecking_test(args):
     data_link = os.path.expanduser(os.path.join("~", "data_%s" % box_name))
     if os.path.exists(data_link):
         os.remove(data_link)
+
     os.symlink(parameters["experiment_path"], data_link)
 
     # Create experiment object
-    exp = PeckingTest(**parameters)
+    if args.preference:
+        exp = PeckingAndPlaybackTest(**parameters)
+    else:
+        if (isinstance(parameters["conditions"], dict) and
+                "pecking" in parameters["conditions"]):
+            parameters["conditions"] = parameters["conditions"]["pecking"]
+            parameters["queue_parameters"] = parameters["queue_parameters"]["pecking"]
+        exp = PeckingTest(**parameters)
     exp.run()
 
 

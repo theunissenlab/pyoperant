@@ -8,10 +8,12 @@ class RecordTrialsMixin(object):
 
     def get_wavfile_path(self):
         basename = os.path.basename(os.path.splitext(self.subject.filename)[0])
+        folder = os.path.dirname(self.subject.filename)
         recording_filename = "trial{}.wav".format(self.this_trial.index)
 
         directory = os.path.join(
-            self.recording_directory,
+            folder,
+            "audio_recordings",
             basename,
         )
         recording_path = os.path.join(

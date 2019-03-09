@@ -226,7 +226,7 @@ class PyAudioInterface(base_.AudioInterface):
         try:
             logger.debug("Attempting to close pyaudio stream")
             events.write(event)
-            self.stream.stop_stream()
+            # self.stream.stop_stream()
             self.stream.close()
             logger.debug("Stream closed")
         except AttributeError:
@@ -235,6 +235,9 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf.close()
         except AttributeError:
             self.wf = None
+        except IOError:
+            self.wf = None
+            logger.error("Error closing wave file. Attempting to continue")
 
 if __name__ == "__main__":
 
