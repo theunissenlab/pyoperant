@@ -101,8 +101,7 @@ class Block(queues.BaseHandler):
     def __next__(self):
         condition = self._get_next_condition()
         # if self._trial is None or not self._trial.aborted:
-        if self._trial is None:
-            self._trial_index += 1
+        self._trial_index += 1
 
         self._trial = trials.Trial(index=self._trial_index,
                              experiment=self.experiment,
