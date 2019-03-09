@@ -208,7 +208,8 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         super(PeckingAndPlaybackTest, self).__init__(*args, block_queue=block_queue, **kwargs)
 
         if np.any([self.record_audio.values()]):
-            assert self.panel.mic
+            if not hasattr(self.panel, "mic"):
+                raise ValueError("Cannot record audio if panel has no mic.")
 
     def trial_iter(self, block_queue):
         for block in block_queue.blocks.values():
@@ -233,9 +234,6 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
     def stimulus_pre(self):
         super(PeckingAndPlaybackTest, self).stimulus_pre()
-        if not self.panel.mic:
-            return
-
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
                 self.recording_key = self.panel.mic.record(
