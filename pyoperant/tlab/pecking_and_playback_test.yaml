@@ -38,6 +38,10 @@ conditions:
         kwds:
             file_path: !!python/object/apply:os.path.join [*stims, "preference"]
 
+gain:
+    pecking: 0
+    playback: -10
+
 # Block properties
 queue: !!python/name:pyoperant.queues.random_queue
 queue_parameters:

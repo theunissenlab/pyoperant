@@ -569,6 +569,10 @@ class Speaker(BaseComponent):
 
         super(Speaker, self).__init__(*args, **kwargs)
         self.output = output
+        self.gain = None
+
+    def set_gain(self, gain):
+        self.gain = gain
 
     def queue(self, wav_filename, metadata=None):
 
@@ -579,7 +583,7 @@ class Speaker(BaseComponent):
     def play(self):
 
         self.event["action"] = "play"
-        return self.output.play(event=self.event)
+        return self.output.play(event=self.event, gain=self.gain)
 
     def stop(self):
 

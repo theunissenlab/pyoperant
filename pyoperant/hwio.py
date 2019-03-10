@@ -424,8 +424,8 @@ class AudioOutput(BaseIO):
     def queue(self, wav_filename, event=None):
         return self.interface._queue_wav(wav_filename, event=event, **self.params)
 
-    def play(self, event=None):
-        return self.interface._play_wav(event=event, **self.params)
+    def play(self, event=None, gain=None):
+        return self.interface._play_wav(event=event, gain=gain, **self.params)
 
     def stop(self, event=None):
         return self.interface._stop_wav(event=event, **self.params)

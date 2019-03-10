@@ -90,6 +90,10 @@ class PyAudioInterface(base_.AudioInterface):
         self.ongoing_threads = []
         self.abort_signal = threading.Event()
         self.open()
+        self.gain = None
+
+    def set_gain(self, gain):
+        self.gain = gain
 
     def open(self):
         with log_alsa_warnings():
@@ -137,6 +141,14 @@ class PyAudioInterface(base_.AudioInterface):
 
             if cont:
                 data = self.wf.readframes(frame_count)
+                # TODO: what if the dtype is not int16???
+                # how to get it automatically from wavfile?
+                data = np.frombuffer(data, np.int16)
+
+                if self.gain:
+                    data = data * np.power(10.0, self.gain / 20.0)
+
+                data = data.astype(np.int16).tostring()
                 return (data, pyaudio.paContinue)
             else:
                 return (None, pyaudio.paComplete)
@@ -215,8 +227,9 @@ class PyAudioInterface(base_.AudioInterface):
         self.validate()
         self._get_stream(start=start, event=event)
 
-    def _play_wav(self, event=None, **kwargs):
+    def _play_wav(self, event=None, gain=None, **kwargs):
         logger.debug("Playing wavfile")
+        self.set_gain(gain)
         self._playing_wav.set()
         events.write(event)
         self.stream.start_stream()
@@ -238,6 +251,7 @@ class PyAudioInterface(base_.AudioInterface):
         except IOError:
             self.wf = None
             logger.error("Error closing wave file. Attempting to continue")
+        self.set_gain(None)
 
 if __name__ == "__main__":
 

@@ -161,6 +161,7 @@ class BaseExp(object):
                  queue=queues.random_queue,
                  queue_parameters=None,
                  reinforcement=None,
+                 gain=None,
                  subject_name=None,
                  datastore="csv",
                  filename=None,
@@ -173,6 +174,8 @@ class BaseExp(object):
             logger.debug("Creating %s" % experiment_path)
             os.makedirs(experiment_path)
         self.experiment_path = experiment_path
+
+        self.gain = gain if gain is not None else {}
 
         # Set up logging
         if log_handlers is None:

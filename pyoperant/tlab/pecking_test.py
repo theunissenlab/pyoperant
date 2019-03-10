@@ -242,6 +242,11 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
                 )
                 break
 
+        for block_name in self.block_queue.blocks:
+            if self.this_trial.block == self.block_queue.blocks[block_name]:
+                self.panel.speaker.set_gain(self.gain.get(block_name, None))
+                break
+
     def response_post(self):
         super(PeckingAndPlaybackTest, self).response_post()
         if self.recording_key is not None:
