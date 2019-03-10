@@ -388,18 +388,27 @@ class BaseHandler(object):
 
         self.queue = queue(items=items, **queue_parameters)
         self.queue_parameters = queue_parameters
+        self._ondeck = next(self.queue)
 
     def reset(self):
         """ Reset the queue """
         self.consumed = False
         self.queue = self._queue(items=self._items, **self.queue_parameters)
+        self._ondeck = next(self.queue)
 
     def __next__(self):
+        if self._ondeck is None:
+            raise StopIteration
+
+        next_item = self._ondeck
+
         try:
-            return next(self.queue)
+            self._ondeck = next(self.queue)
         except StopIteration:
             self.consumed = True
-            raise
+            self._ondeck = None
+
+        return next_item
 
     def next(self):
         return self.__next__()

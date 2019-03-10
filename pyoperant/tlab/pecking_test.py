@@ -204,12 +204,16 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
         self.inactivity_before_playback = inactivity_before_playback
         self.inactivity_before_playback_restart = inactivity_before_playback_restart
+        self.last_playback_reset = dt.datetime.now()
 
         super(PeckingAndPlaybackTest, self).__init__(*args, block_queue=block_queue, **kwargs)
 
         if np.any([self.record_audio.values()]):
             if not hasattr(self.panel, "mic"):
                 raise ValueError("Cannot record audio if panel has no mic.")
+
+    def get_seconds_from_last_reset(self):
+        return (dt.datetime.now() - self.last_playback_reset).total_seconds()
 
     def trial_iter(self, block_queue):
         for block in block_queue.blocks.values():
@@ -218,7 +222,8 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         while not block_queue.check_completion():
             if not self.start_immediately:
                 if block_queue.check_completion("playback"):
-                    timeout = self.inactivity_before_playback_restart
+                    since_reset = self.get_seconds_from_last_reset()
+                    timeout = self.inactivity_before_playback_restart - since_reset
                 else:
                     timeout = np.random.uniform(*self.inactivity_before_playback)
                 response = self.panel.response_port.poll(timeout=timeout)
@@ -227,6 +232,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
             if response is None:  # timeout
                 if block_queue.check_completion("playback"):
+                    self.last_playback_reset = dt.datetime.now()
                     block_queue.reset_one("playback")
                 yield block_queue.next_trial("playback")
             else:

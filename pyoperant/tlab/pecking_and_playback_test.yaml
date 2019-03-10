@@ -4,7 +4,7 @@ name: Go No-Go Interruption
 description: >
     Runs a version of the Go No-Go Interruption experiment for the Theunissen lab
 experimenter:
-    name: Theunissen Lab
+    name: Frederic Theunissen
 
 # Experiment properties
 subject_name: ColCol0000M

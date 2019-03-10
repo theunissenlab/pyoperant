@@ -86,20 +86,12 @@ class Block(queues.BaseHandler):
     def check_completion(self):
         return self.consumed
 
-    def _get_next_condition(self):
-        try:
-            condition = next(self.queue)
-        except StopIteration:
-            self.consumed = True
-            raise
-        else:
-            return condition
-
     def next_trial(self):
         return next(self)
 
     def __next__(self):
-        condition = self._get_next_condition()
+        condition = super(Block, self).__next__()
+
         # if self._trial is None or not self._trial.aborted:
         self._trial_index += 1
 
@@ -161,7 +153,6 @@ class BlockHandler(queues.BaseHandler):
                                            **queue_parameters)
 
     def __iter__(self):
-
         for block in self.queue:
             self.block_index += 1
             block.index = self.block_index
