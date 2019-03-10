@@ -152,11 +152,14 @@ class BlockHandler(queues.BaseHandler):
                                            items=blocks,
                                            **queue_parameters)
 
+    def __next__(self):
+        block = super(BlockHandler, self).__next__()
+        self.block_index += 1
+        block.index = self.block_index
+        return block
+
     def __iter__(self):
-        for block in self.queue:
-            self.block_index += 1
-            block.index = self.block_index
-            yield block
+        return self
 
 
 class MixedBlockHandler(BlockHandler):
