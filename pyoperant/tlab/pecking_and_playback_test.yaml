@@ -18,8 +18,8 @@ panel: !!python/object/apply:pyoperant.tlab.local_tlab.Box3 {}
 
 # Experiment properties
 reward_value: 12.0
-inactivity_before_playback: [5.0, 30.0]
-inactivity_before_playback_restart: 3600.0
+inactivity_before_playback: [10.0, 30.0]
+inactivity_before_playback_restart: 1800.0  # 15 minutes
 
 # Session details
 num_sessions: 1
@@ -40,7 +40,7 @@ conditions:
 
 gain:
     pecking: 0
-    playback: -10
+    playback: -30
 
 # Block properties
 queue: !!python/name:pyoperant.queues.random_queue
@@ -50,7 +50,7 @@ queue_parameters:
       - 0.2
       - 0.8
   playback:
-    max_items: 50
+    max_items: 2
 
 record_audio:
   pecking: false
