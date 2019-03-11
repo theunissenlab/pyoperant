@@ -263,6 +263,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         if self.this_trial.block == self.block_queue.blocks["pecking"]:
             GoNoGoInterrupt.response_main(self)
         else:
+            self.this_trial.rt = np.nan
             utils.wait(self.this_trial.stimulus.duration)
 
 
