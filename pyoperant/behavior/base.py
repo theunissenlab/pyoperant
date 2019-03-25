@@ -280,6 +280,9 @@ class BaseExp(object):
         self.session_id = 0
         self.finished = False
 
+    def select_stimulus(self, condition):
+        return condition.get()
+
     def set_subject(self, subject, filename=None, datastore="csv"):
         """ Creates a subject for the current experiment.
 

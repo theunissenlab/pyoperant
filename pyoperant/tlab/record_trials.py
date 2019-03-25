@@ -26,5 +26,7 @@ class RecordTrialsMixin(object):
 
         return recording_path
 
-    def session_post(self):
-        self.panel.mic.input.interface.close()
+    def end(self):
+        if self.panel.mic:
+            self.panel.mic.input.interface.close()
+        super(RecordTrialsMixin, self).end()

@@ -135,6 +135,57 @@ class BooleanInput(BaseIO):
 
         return input_time
 
+class NonBooleanInput(BooleanInput):
+    def __init__(self, interface=None, params={},
+                 *args, **kwargs):
+        super(NonBooleanInput, self).__init__(interface=interface,
+                                           params=params,
+                                           *args,
+                                           **kwargs)
+        self.last_value = None
+        self.config()
+
+    def config(self):
+        """ Calls the interface's _config_read method with the keyword arguments
+        in params
+        Returns
+        -------
+        bool
+            True if configuration succeeded
+        """
+
+        if not hasattr(self.interface, "_config_read"):
+            return False
+
+        return self.interface._config_read(**self.params)
+
+    def read(self):
+        """ Read the status of the boolean input
+        Returns
+        -------
+        bool
+            The current status reported by the interface
+        """
+
+        self.last_value = self.interface._read(**self.params)
+        return self.last_value
+
+    def poll(self, timeout=None):
+        """ Runs a loop, querying for a GUI event.
+        Parameters
+        ----------
+        timeout: float
+        Returns
+        -------
+        dict or None
+        """
+
+        event = self.interface._poll(timeout=timeout,
+                                          last_value=self.last_value,
+                                          **self.params)
+        return event
+
+
 class BooleanOutput(BaseIO):
     """Class which holds information about boolean outputs and abstracts the
     methods of writing to them

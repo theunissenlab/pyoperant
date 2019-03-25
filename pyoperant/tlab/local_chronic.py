@@ -5,7 +5,7 @@ import argparse
 from functools import wraps
 
 from pyoperant import hwio, components, panels, utils, InterfaceError, events
-from pyoperant.interfaces import nidaq_
+from pyoperant.interfaces import nidaq_, pyaudio_, tkgui_
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,16 @@ class Panel131(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Dev1", channel="ao0", input_channel=None, name=None, *args, **kwargs):
+    def __init__(self, speaker="Dev1", channel="ao0", mic=None, use_nidaq=True, input_channel=None, name=None, *args, **kwargs):
         super(Panel131, self).__init__(self, *args, **kwargs)
         self.name = name
 
         # Initialize interfaces
-        speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
+        if use_nidaq:
+            speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
                                                    clock_channel="/Dev1/PFI0")
+        else:
+            speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
 
         # Create a digital to analog event handler
         analog_event_handler = events.EventDToAHandler(channel=speaker + "/" + "ao1",
@@ -57,6 +60,8 @@ class Panel131(panels.BasePanel):
             mic_in = pyaudio_.PyAudioInterface(device_name=mic, input_rate=self.mic_rate)
             audio_in = hwio.AudioInput(interface=mic_in)
             self.mic = components.Microphone(audio_in)
+        else:
+            self.mic = None
 
         # Add boolean hwios to inputs and outputs
         self.inputs = []
@@ -74,12 +79,12 @@ class Panel131(panels.BasePanel):
             self.button = components.Button(IR=boolean_input)
 
     def reset(self):
-        self.mic.input.interface.close()
-        pass
+        if self.mic:
+            self.mic.input.interface.close()
 
     def sleep(self):
-        self.mic.input.interface.close()
-        pass
+        if self.mic:
+            self.mic.input.interface.close()
 
     def ready(self):
 
