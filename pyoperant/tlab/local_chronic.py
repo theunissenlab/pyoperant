@@ -110,3 +110,39 @@ class PanelWithInput(Panel131):
 
         super(PanelWithInput, self).__init__(name="Panel with input",
                                              input_channel="port0/line5")
+
+
+class Panel131GUI(Panel131):
+    def __init__(self, *args, **kwargs):
+        super(Panel131GUI, self).__init__(name="Panel131 With GUI", *args, **kwargs):
+
+        self.state = {}
+        self.gui = tkgui_.TkInterface(self.state)
+
+        condition_input = hwio.NonBooleanInput(name="condition", interface=self.gui, params={"key": "condition"})
+        self.inputs.append(condition_input)
+        self.condition_button = components.Button(IR=condition_input)
+
+        stim_input = hwio.NonBooleanInput(name="stim", interface=self.gui, params={"key": "selected_stim"})
+        self.inputs.append(stim_input)
+        self.stimulus_select = components.Button(IR=stim_input)
+
+        pause_input = hwio.BooleanInput(name="pause", interface=self.gui, params={"key": "paused"})
+        self.inputs.append(pause_input)
+        self.pause_button = components.Button(IR=pause_input)
+
+        quit_button = hwio.BooleanInput(name="quit", interface=self.gui, params={"key": "quit"})
+        self.inputs.append(quit_button)
+        self.quit_button = components.Button(IR=quit_button)
+
+        play_input = hwio.BooleanInput(name="play", interface=self.gui, params={"key": "play"})
+        self.inputs.append(play_input)
+        self.play_button = components.Button(IR=play_input)
+
+        self.gui.open()
+
+    def ready(self):
+        super(Panel131GUI, self).ready()
+
+    def sleep(self):
+        super(Panel131GUI, self).sleep()

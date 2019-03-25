@@ -14,7 +14,7 @@ stim_directory: &stims ""
 experiment_path: "" # This is the root directory and will be appended with subject and date
 
 # Panel
-panel: !!python/object/apply:pyoperant.tlab.local_chronic.Thing131 {}
+panel: !!python/object/apply:pyoperant.tlab.local_chronic.Panel131GUI {}
 intertrial_interval: [3.5, 6.5]
 
 # Session details
