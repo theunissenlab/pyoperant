@@ -9,8 +9,9 @@ import scipy.io.wavfile
 import pyaudio
 import wave
 from pyoperant.interfaces import base_
-from pyoperant import InterfaceError
+from pyoperant import InterfaceError, utils
 from pyoperant.events import events
+
 
 logger = logging.getLogger(__name__)
 # TODO: Clean up _stop_wav logging changes
@@ -87,10 +88,11 @@ class PyAudioInterface(base_.AudioInterface):
         self._playing_wav = threading.Event()
         self._recording = threading.Event()
         self.rec_queue = None
-        self.ongoing_threads = []
         self.abort_signal = threading.Event()
         self.open()
         self.gain = None
+        self.play_thread = None
+        self._playback_quit_signal = None
 
     def set_gain(self, gain):
         self.gain = gain
@@ -114,8 +116,6 @@ class PyAudioInterface(base_.AudioInterface):
         logger.debug("Closing device")
         self.abort_signal.set()
         self.abort_signal = threading.Event()
-        for t in self.ongoing_threads:
-            t.join()
 
         try:
             self.stream.close()
@@ -127,45 +127,110 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf = None
         self.pa.terminate()
 
+    def _run_play(self, wf=None, gain=None, quit_signal=None, abort_signal=None):
+        """Function to play back a sound
+
+        Plays back a sound in chunks of 512 until the wav file is completed
+        or a quit_signal or abort_signal is received.
+
+        Parameters
+        ----------
+        wf : wav file opened with wave.open
+        gain : float
+            factor by which to scale the output signal
+        quit_signal : threading.Event
+            thread-safe signal that will end the playback when the event is set
+        abort_signal : threading.Event
+            thread-safe signal that will end the playback when the event is set
+        """
+        chunk = 1024
+
+        stream = self.pa.open(
+           format=self.pa.get_format_from_width(wf.getsampwidth()),
+           channels=wf.getnchannels(),
+           rate=wf.getframerate(),
+           output=True,
+           frames_per_buffer=chunk,
+           output_device_index=self.device_index,
+        )
+
+        data = wf.readframes(chunk)
+
+        while not data == "":
+            if quit_signal.is_set() or abort_signal.is_set():
+                logger.debug("Attempting to close pyaudio stream on interrupt")
+                stream.close()
+                logger.debug("Stream closed")
+                break
+
+            dtype = self._get_dtype(wf)
+            data = np.frombuffer(data, np.int16)
+
+            if gain:
+                data = data * np.power(10.0, gain / 20.0)
+
+            data = data.astype(np.int16).tostring()
+            stream.write(data)
+            data = wf.readframes(chunk)
+        else:
+            logger.debug("Attempting to close pyaudio stream on file complete")
+            # Extra wait at the end to make sure the whole file is played
+            utils.wait(0.4)
+            stream.close()
+            logger.debug("Stream closed")
+
+        try:
+            wf.close()
+        except:
+            logger.error("Error closing wave file. Attempting to continue")
+
     def _get_stream(self, start=False, event=None, **kwargs):
+        """Prepare a thread to run stimulus playback
+
+        Parameters
+        ----------
+        start : bool
+            When set to true, automatically launch the playback thread right away
+        event :
+            Evenet for logging purposes
         """
-        """
-        def _callback(in_data, frame_count, time_info, status):
-            if not self._playing_wav.is_set():
-                return (None, pyaudio.paComplete)
+        new_quit_signal = threading.Event()
 
-            try:
-                cont = self.callback()
-            except TypeError:
-                cont = True
-
-            if cont:
-                data = self.wf.readframes(frame_count)
-                # TODO: what if the dtype is not int16???
-                # how to get it automatically from wavfile?
-                data = np.frombuffer(data, np.int16)
-
-                if self.gain:
-                    data = data * np.power(10.0, self.gain / 20.0)
-
-                data = data.astype(np.int16).tostring()
-                return (data, pyaudio.paContinue)
-            else:
-                return (None, pyaudio.paComplete)
-
-        self.stream = self.pa.open(format=self.pa.get_format_from_width(self.wf.getsampwidth()),
-                                   channels=self.wf.getnchannels(),
-                                   rate=self.wf.getframerate(),
-                                   output=True,
-                                   output_device_index=self.device_index,
-                                   start=False,
-                                   stream_callback=_callback)
+        new_thread = threading.Thread(
+            target=self._run_play,
+            kwargs={
+                "wf": self.wf,
+                "gain": self.gain,
+                "quit_signal": new_quit_signal,
+                "abort_signal": self.abort_signal
+            }
+        )
+        self.play_thread = new_thread
 
         if start:
             self._play_wav(event=event)
 
+        self.wf = None
+
+        return new_quit_signal
+
     def _run_record(self, duration=None, dest=None, quit_signal=None, abort_signal=None):
-        chunk = 2048
+        """Record audio from pyaudio stream for a fixed duration or until a quit signal
+
+        Parameters
+        ----------
+        duration : float
+            Specify either the duration in seconds to record for
+            (if quit_signal is not set), or the duration to record after the
+            quit signal is received (padding)
+        dest : str
+            Path to save recorded data to
+        quit_signal : threading.Event
+            thread-safe signal that will end the recording when the event is set
+        abort_signal : threading.Event
+            thread-safe signal that will end the recording when the event is set
+        """
+        chunk = 1024
         stream = self.pa.open(format=pyaudio.paInt16,
             channels=1,
             rate=self.rate,
@@ -174,6 +239,7 @@ class PyAudioInterface(base_.AudioInterface):
             frames_per_buffer=chunk)
 
         frames = []
+
         if quit_signal is not None:
             while not quit_signal.is_set() and not abort_signal.is_set():
                 data = stream.read(chunk)
@@ -187,6 +253,8 @@ class PyAudioInterface(base_.AudioInterface):
                 data = stream.read(chunk)
                 data = np.frombuffer(data, dtype=np.int16)
                 frames.append(data)
+
+        stream.close()
 
         if not len(frames):
             return
@@ -213,7 +281,6 @@ class PyAudioInterface(base_.AudioInterface):
                 "abort_signal": self.abort_signal
             }
         )
-        self.ongoing_threads.append(t)
         t.start()
         return t, new_quit_signal
 
@@ -222,36 +289,31 @@ class PyAudioInterface(base_.AudioInterface):
             quit_signal.set()
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
+        if self._playback_quit_signal:
+            self._playback_quit_signal.set()
+
         logger.debug("Queueing wavfile %s" % wav_file)
         self.wf = wave.open(wav_file)
         self.validate()
-        self._get_stream(start=start, event=event)
+        self._playback_quit_signal = self._get_stream(
+            start=start,
+            gain=self.gain,
+            event=event
+        )
+        self.set_gain(None)
 
     def _play_wav(self, event=None, gain=None, **kwargs):
         logger.debug("Playing wavfile")
-        self.set_gain(gain)
-        self._playing_wav.set()
         events.write(event)
-        self.stream.start_stream()
+
+        self.set_gain(gain)
+
+        if self.play_thread is not None:
+            self.play_thread.start()
 
     def _stop_wav(self, event=None, **kwargs):
-        self._playing_wav.clear()
-        try:
-            logger.debug("Attempting to close pyaudio stream")
-            events.write(event)
-            # self.stream.stop_stream()
-            self.stream.close()
-            logger.debug("Stream closed")
-        except AttributeError:
-            self.stream = None
-        try:
-            self.wf.close()
-        except AttributeError:
-            self.wf = None
-        except IOError:
-            self.wf = None
-            logger.error("Error closing wave file. Attempting to continue")
-        self.set_gain(None)
+        self._playback_quit_signal.set()
+        self.play_thread = None
 
 if __name__ == "__main__":
 

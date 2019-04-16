@@ -96,14 +96,6 @@ class Trial(object):
 
         self.experiment.this_trial = self
 
-        # Pre-pre trial (before stimulus is selected)
-        try:
-            self.experiment.await_trigger()
-        except AbortTrial:
-            logger.info("Aborting trial.")
-            self.aborted = True
-            return
-
         # Get the stimulus
         try:
             self.stimulus = self.experiment.select_stimulus(self.condition)

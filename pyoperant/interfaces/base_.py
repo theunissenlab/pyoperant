@@ -139,17 +139,11 @@ class AudioInterface(BaseInterface):
         Verifies simply that the wav file has been opened. Could do other
         checks in the future.
         """
-
         if self.wf is None:
             raise InterfaceError("wavefile is not open, but it should be")
 
-    def _load_wav(self, filename):
-        """ Loads the .wav file and normalizes it according to its bit depth
-        """
-
-        self.wf = wave.open(filename)
-        self.validate()
-        sampwidth = self.wf.getsampwidth()
+    def _get_dtype(self, wavfile):
+        sampwidth = wavfile.getsampwidth()
         if sampwidth == 2:
             max_val = 32768.0
             dtype = np.int16
@@ -157,6 +151,16 @@ class AudioInterface(BaseInterface):
             max_val = float(2 ** 32)
             dtype = np.int32
 
+        return dtype
+
+    def _load_wav(self, filename):
+        """ Loads the .wav file and normalizes it according to its bit depth
+        """
+
+        self.wf = wave.open(filename)
+        self.validate()
+
+        dtype = self._get_dtype(self.wf)
         data = np.fromstring(self.wf.readframes(-1), dtype=dtype)
 
         return (data / max_val).astype(np.float64)
