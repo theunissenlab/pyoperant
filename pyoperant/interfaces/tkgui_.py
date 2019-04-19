@@ -85,6 +85,7 @@ class TkInterface(base_.BaseInterface):
             self.set_status("Ready (waiting for user)")
 
         try:
+            # Python 2.7 queue.get cannot be interrupted by keyboard interrupt
             val = self.event_queues[key].get(timeout=timeout)
         except Queue.Empty:
             return None
@@ -106,7 +107,7 @@ class GUIThread(threading.Thread):
             Dictionary of queue name to Queue.Queue instance, for pushing
             events between threads.
         """
-        super(GUIThread, self).__init__(self)
+        threading.Thread.__init__(self)
         self.state = state
         self.event_queues = event_queues
         self.known_files = []
