@@ -116,9 +116,6 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
                 self.panel.gui.set_status("Playing stimulus")
                 yield block_queue.next_trial(condition_str)
 
-    def await_trigger(self):
-        return
-
     def select_stimulus(self, condition):
         if isinstance(condition, stimuli.DynamicStimulusCondition):
             selected_stimulus = self.panel.stimulus_select.status()

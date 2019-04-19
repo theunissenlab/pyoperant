@@ -93,19 +93,25 @@ class SimpleStimulusPlayback(base.BaseExp):
         super(SimpleStimulusPlayback, self).__init__(blocks=blocks,
                                                      *args, **kwargs)
 
-    def await_trigger(self):
-        if isinstance(self.intertrial_interval, (list, tuple)):
-            self.iti = np.random.uniform(*self.intertrial_interval)
-        else:
-            self.iti = self.intertrial_interval
+    def trial_iter(self, block_queue):
+        for self.this_block in self.block_queue:
+            self.this_block.experiment = self
+            logger.info("Beginning block #%d" % self.this_block.index)
 
-        utils.wait(self.iti)
+            for trial in self.this_block:
+                if isinstance(self.intertrial_interval, (list, tuple)):
+                    self.iti = np.random.uniform(*self.intertrial_interval)
+                else:
+                    self.iti = self.intertrial_interval
+
+                logger.debug("Waiting for %1.3f seconds" % self.iti)
+                utils.wait(self.iti)
+                yield trial
 
     def trial_pre(self):
         """ Store data that is specific to this experiment, and compute a wait time for an intertrial interval
         """
         stimulus = self.this_trial.stimulus.file_origin
-        logger.debug("Waiting for %1.3f seconds" % self.iti)
         self.this_trial.annotate(stimulus_name=stimulus,
                                  intertrial_interval=self.iti)
 

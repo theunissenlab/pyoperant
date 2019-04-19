@@ -106,7 +106,7 @@ class GUIThread(threading.Thread):
             Dictionary of queue name to Queue.Queue instance, for pushing
             events between threads.
         """
-        threading.Thread.__init__(self)
+        super(GUIThread, self).__init__(self)
         self.state = state
         self.event_queues = event_queues
         self.known_files = []
