@@ -70,9 +70,12 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
         panel.gui.state["stimulus_dir"] = conditions["online"][0].file_path
 
         base.BaseExp.__init__(self, *args, block_queue=block_queue, **kwargs)
-        
+
         self.intertrial_interval = intertrial_interval
 
+    def run(self, *args, **kwargs):
+        self.panel.gui.open()
+        super(ChronicWithOnlinePlayback, self).run(*args, **kwargs)
 
     def trial_iter(self, block_queue):
         for block in block_queue.blocks.values():

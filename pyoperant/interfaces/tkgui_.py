@@ -311,6 +311,10 @@ class GUIThread(threading.Thread):
             self._quit()
             return
 
+        if not self.state["stimulus_dir"]:
+            self.status_label_text.set("No stimulus dir is set in config!")
+            return
+
         files = glob.glob(os.path.join(self.state["stimulus_dir"], "*.wav"))
 
         files = sorted(files, key=os.path.getmtime, reverse=True)
@@ -385,4 +389,3 @@ class GUIThread(threading.Thread):
             self.root.mainloop()
         except KeyboardInterrupt:
             self.quit()
-

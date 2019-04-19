@@ -55,6 +55,7 @@ class Panel131(panels.BasePanel):
                                      params={"channel": speaker + "/" + channel,
                                              "analog_event_handler": analog_event_handler})
 
+        self.mic = None
         if mic is not None:
             self.mic_rate = 44100
             mic_in = pyaudio_.PyAudioInterface(device_name=mic, input_rate=self.mic_rate)
@@ -114,7 +115,7 @@ class PanelWithInput(Panel131):
 
 class Panel131GUI(Panel131):
     def __init__(self, *args, **kwargs):
-        super(Panel131GUI, self).__init__(name="Panel131 With GUI", *args, **kwargs):
+        super(Panel131GUI, self).__init__(*args, **kwargs)
 
         self.state = {}
         self.gui = tkgui_.TkInterface(self.state)
@@ -138,11 +139,3 @@ class Panel131GUI(Panel131):
         play_input = hwio.BooleanInput(name="play", interface=self.gui, params={"key": "play"})
         self.inputs.append(play_input)
         self.play_button = components.Button(IR=play_input)
-
-        self.gui.open()
-
-    def ready(self):
-        super(Panel131GUI, self).ready()
-
-    def sleep(self):
-        super(Panel131GUI, self).sleep()

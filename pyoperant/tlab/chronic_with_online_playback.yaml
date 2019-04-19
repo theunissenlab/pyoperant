@@ -29,7 +29,7 @@ conditions:
     normal:
         - &normal !!python/object/apply:pyoperant.tlab.chronic_with_online_playback.NormalCondition
           kwds:
-              file_path: !!python/object/apply:os.path.join [*stims, "normal"]
+              file_path: !!python/object/apply:os.path.join [*stims, "normal", "TutFamBos"]
 
 # Block properties
 queue: !!python/name:pyoperant.queues.random_queue

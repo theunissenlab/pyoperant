@@ -59,9 +59,12 @@ def log_alsa_warnings():
             break
         except OSError:
             continue
-    asound.snd_lib_error_set_handler(c_error_handler)
-    yield
-    asound.snd_lib_error_set_handler(None)
+            asound.snd_lib_error_set_handler(c_error_handler)
+            yield
+            asound.snd_lib_error_set_handler(None)
+            break
+    else:
+        yield
 
 
 class PyAudioInterface(base_.AudioInterface):
