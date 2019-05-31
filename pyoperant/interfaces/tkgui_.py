@@ -336,8 +336,12 @@ class GUIThread(threading.Thread):
 
         if self.state["selected_stim"] is not None:
             full_path = self.state["selected_stim"]
-        else:
+        elif len(files):
             full_path = max(files, key=os.path.getmtime)
+        else:
+            self._periodic_loop_after = self.root.after(500, self._periodic_loop)
+            return
+
         self.update_queued_label(full_path)
 
         for msg in list(self.event_queues["status_msg"].queue):

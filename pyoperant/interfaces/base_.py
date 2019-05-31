@@ -151,7 +151,7 @@ class AudioInterface(BaseInterface):
             max_val = float(2 ** 32)
             dtype = np.int32
 
-        return dtype
+        return dtype, max_val
 
     def _load_wav(self, filename):
         """ Loads the .wav file and normalizes it according to its bit depth
@@ -160,7 +160,7 @@ class AudioInterface(BaseInterface):
         self.wf = wave.open(filename)
         self.validate()
 
-        dtype = self._get_dtype(self.wf)
+        dtype, max_val = self._get_dtype(self.wf)
         data = np.fromstring(self.wf.readframes(-1), dtype=dtype)
 
         return (data / max_val).astype(np.float64)

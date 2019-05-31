@@ -166,13 +166,13 @@ class PyAudioInterface(base_.AudioInterface):
                 logger.debug("Stream closed")
                 break
 
-            dtype = self._get_dtype(wf)
-            data = np.frombuffer(data, np.int16)
+            dtype, max_val = self._get_dtype(wf)
+            data = np.frombuffer(data, dtype)
 
             if gain:
                 data = data * np.power(10.0, gain / 20.0)
 
-            data = data.astype(np.int16).tostring()
+            data = data.astype(dtype).tostring()
             stream.write(data)
             data = wf.readframes(chunk)
         else:

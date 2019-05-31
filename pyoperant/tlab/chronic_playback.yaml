@@ -27,11 +27,11 @@ log_handlers:
     # stream's only option is level. Overrides "debug" parameter for logging
     # level can either be logging.DEBUG or logging.INFO
     stream:
-        level: !!python/name:logging.DEBUG
+        level: !!python/name:logging.INFO
     # file takes options of
     # filename: a file under experiment_path
     # level: a python logging level, written as "!!python/name:logging.LEVEL"
     file:
         filename: "experiment.log"
-        level: !!python/name:logging.DEBUG
+        level: !!python/name:logging.INFO
 ...
