@@ -288,10 +288,14 @@ class GUIThread(threading.Thread):
         if not listbox.curselection():
             full_path = None
         else:
-            index = int(listbox.curselection()[0])
-            full_path = self.stim_mapping[index]
+            # index = int(listbox.curselection()[0])
+            # full_path = self.stim_mapping[index]
+            full_path = [
+                self.stim_mapping[int(index)]
+                for index in listbox.curselection()
+            ]
         self.state["selected_stim"] = full_path
-        self.update_queued_label(full_path)
+        self.update_queued_label("{} stims".format(len(full_path)))
 
     def update_queued_label(self, stim_path):
         """Update the label showing the next stim to be played"""

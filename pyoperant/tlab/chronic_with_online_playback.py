@@ -81,7 +81,8 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
         for block in block_queue.blocks.values():
             block.experiment = self
 
-        while not self.normal_block.check_completion():
+        # while not self.normal_block.check_completion():
+        while not block_queue.check_completion():
             if isinstance(self.intertrial_interval, (list, tuple)):
                 self.iti = np.random.uniform(*self.intertrial_interval)
             else:
@@ -106,7 +107,8 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
                 self.panel.gui.set_status({"iti": self.iti})
                 status = self.panel.quit_button.poll(timeout=self.iti)
             elif condition_str == "online":
-                status = self.panel.play_button.poll()
+                self.panel.gui.set_status({"iti": self.iti})
+                status = self.panel.quit_button.poll(timeout=self.iti)
 
             if status == MessageStatus.QUIT:
                 raise KeyboardInterrupt
