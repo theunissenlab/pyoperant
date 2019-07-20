@@ -166,7 +166,7 @@ class PanelSeewiesen(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Speakers / Headphones (Realtek ", channel="ao0", input_channel=None, name=None, *args, **kwargs):
+    def __init__(self, speaker="Speakers / Headphones (Realtek ", mic = None, channel="ao0", input_channel=None, name=None, *args, **kwargs):
         super(PanelSeewiesen, self).__init__(self, *args, **kwargs)
         self.name = name
 
@@ -182,6 +182,14 @@ class PanelSeewiesen(panels.BasePanel):
         audio_out = hwio.AudioOutput(interface=speaker_out)
         #                             params={"channel": speaker + "/" + channel,
         #                                     "analog_event_handler": analog_event_handler})
+        self.mic = None
+        if mic is not None:
+            self.mic_rate = 44100
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic, input_rate=self.mic_rate)
+            audio_in = hwio.AudioInput(interface=mic_in)
+            self.mic = components.Microphone(audio_in)
+        else:
+            self.mic = None
 
         # Add boolean hwios to inputs and outputs
         self.inputs = []
@@ -233,7 +241,7 @@ class PanelSeewiesenInput(PanelSeewiesen):
 
 class PanelSeewiesenGUI(PanelSeewiesen):
     def __init__(self, *args, **kwargs):
-        super(Panel131GUI, self).__init__(*args, **kwargs)
+        super(PanelSeewiesenGUI, self).__init__(*args, **kwargs)
 
         self.state = {}
         self.gui = tkgui_.TkInterface(self.state)
