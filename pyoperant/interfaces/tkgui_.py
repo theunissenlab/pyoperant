@@ -302,8 +302,11 @@ class GUIThread(threading.Thread):
         if self.state["condition"] == "normal":
             self.next_stim_label_text.set("Sampling from stim directory")
         else:
-            file_name = os.path.splitext(os.path.basename(stim_path))[0]
-            self.next_stim_label_text.set("Queued\n{}".format(file_name))
+            try:
+                file_name = os.path.splitext(os.path.basename(stim_path))[0]
+                self.next_stim_label_text.set("Queued\n{}".format(file_name))
+            except:
+                self.next_stim_label_text.set(stim_path)
 
     def _periodic_loop(self):
         """Periodic callback to update labels without a specific trigger
