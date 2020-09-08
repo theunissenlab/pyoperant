@@ -197,7 +197,7 @@ class GUIThread(threading.Thread):
         )
 
         self.stim_label = tk.Label(stim_control_frame, textvariable=self.next_stim_label_text)
-        self.stim_listbox = tk.Listbox(stim_select_frame, selectmode=tk.SINGLE)
+        self.stim_listbox = tk.Listbox(stim_select_frame, selectmode=tk.EXTENDED)
         self.stim_listbox.config(width=0)
         self.stim_listbox.bind('<<ListboxSelect>>', self.on_stim_select)
 
@@ -302,11 +302,17 @@ class GUIThread(threading.Thread):
         if self.state["condition"] == "normal":
             self.next_stim_label_text.set("Sampling from stim directory")
         else:
-            try:
-                file_name = os.path.splitext(os.path.basename(stim_path))[0]
-                self.next_stim_label_text.set("Queued\n{}".format(file_name))
-            except:
-                self.next_stim_label_text.set(stim_path)
+            if isinstance(stim_path, list):
+                if len(stim_path) > 1:
+                    self.next_stim_label_text.set("Selected {} stims".format(len(stim_path)))
+                else:
+                    self.next_stim_label_text.set("Queued\n{}".format(stim_path[0]))
+            elif isinstance(stim_path, basestring):
+                try:
+                    file_name = os.path.splitext(os.path.basename(stim_path))[0]
+                    self.next_stim_label_text.set("Queued\n{}".format(file_name))
+                except:
+                    self.next_stim_label_text.set(stim_path)
 
     def _periodic_loop(self):
         """Periodic callback to update labels without a specific trigger
