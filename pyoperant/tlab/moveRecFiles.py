@@ -22,6 +22,7 @@ from soundsig.signal import bandpass_filter
 startFolder = 'C:/Users/soundrec/Raven Lite 2.0/Clips'
 endFolder = 'C:/Users/soundrec/stimuli/Playback/online'
 
+
 dBScale = 40   # Increases sound intensity by 40 db
 
 #  Begining of scrip
