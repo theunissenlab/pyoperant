@@ -161,6 +161,7 @@ class BaseExp(object):
                  queue=queues.random_queue,
                  queue_parameters=None,
                  reinforcement=None,
+                 gain=None,
                  subject_name=None,
                  datastore="csv",
                  filename=None,
@@ -173,6 +174,8 @@ class BaseExp(object):
             logger.debug("Creating %s" % experiment_path)
             os.makedirs(experiment_path)
         self.experiment_path = experiment_path
+
+        self.gain = gain if gain is not None else {}
 
         # Set up logging
         if log_handlers is None:
@@ -276,6 +279,9 @@ class BaseExp(object):
         # Get ready to run!
         self.session_id = 0
         self.finished = False
+
+    def select_stimulus(self, condition):
+        return condition.get()
 
     def set_subject(self, subject, filename=None, datastore="csv"):
         """ Creates a subject for the current experiment.
@@ -560,16 +566,19 @@ class BaseExp(object):
         self.session_start_time = dt.datetime.now()
         self.panel.ready()
 
-    def session_main(self):
-        """ Runs the session by looping over the block queue and then running
-        each trial in each block.
-        """
-
+    def trial_iter(self, block_queue):
         for self.this_block in self.block_queue:
             self.this_block.experiment = self
             logger.info("Beginning block #%d" % self.this_block.index)
             for trial in self.this_block:
-                trial.run()
+                yield trial
+
+    def session_main(self):
+        """ Runs the session by looping over the block queue and then running
+        each trial in each block.
+        """
+        for trial in self.trial_iter(self.block_queue):
+            trial.run()
 
     def session_post(self):
         """ Closes out the sessions

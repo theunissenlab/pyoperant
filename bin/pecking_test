@@ -1,0 +1,176 @@
+#!/usr/bin/env python
+# PYTHON_ARGCOMPLETE_OK
+import os
+
+# Set up default directories
+sync_dir = os.path.abspath(os.path.expanduser("~"))
+stimuli_dir = os.path.join(sync_dir, "stimuli")
+config_dir = os.path.join(sync_dir, "configs")
+data_dir = os.path.join(sync_dir, "data")
+
+# Define functions
+# Import within them so that calls to pecking_test -h are faster
+def run(args):
+    from pyoperant.tlab.pecking_test import run_pecking_test
+    run_pecking_test(args)
+
+def test(args):
+    from pyoperant.tlab.local_tlab import test_box
+    test_box(args)
+
+def test_audio(args):
+    from pyoperant.tlab.local_tlab import test_box_audio
+    test_box_audio(args)
+
+def calibrate(args):
+    from pyoperant.tlab.local_tlab import calibrate_box
+    calibrate_box(args)
+
+def shutdown(args):
+    from pyoperant.tlab.local_tlab import shutdown_box
+    shutdown_box(args)
+
+def data(args):
+    import pandas as pd
+    from pecking_analysis.utils import convert_date, get_csv
+    from pecking_analysis.peck_data import peck_data
+    from pecking_analysis.importer import PythonCSV
+
+    # Increase display width
+    pd.set_option("display.width", 1000)
+
+    if (args.date is None) and (args.bird is None):
+        args.date = "today"
+
+    date = convert_date(args.date)
+    csv_files = get_csv(data_dir, date=date, bird=args.bird)
+    blocks = PythonCSV.parse(csv_files)
+    results = peck_data(blocks)
+
+def export(args):
+    from pecking_analysis.utils import get_csv, convert_date
+    from pecking_analysis.importer import PythonCSV
+
+    if args.filename is None:
+        args.filename = os.path.join(data_dir, "flicker_fusion.h5")
+
+    if (args.date is None) and (args.bird is None) and (not args.all):
+        args.date = "today"
+
+    date = convert_date(args.date)
+    csv_files = get_csv(data_dir, date=date, bird=args.bird)
+
+    blocks = PythonCSV.parse(csv_files)
+    for blk in blocks:
+        blk.save(args.filename, args.overwrite)
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    # import socket
+    # import subprocess
+    try:
+        import argcomplete
+    except ImportError:
+        argcomplete = None
+
+    # Create argument parser
+    parser = argparse.ArgumentParser(description="Run methods associated with the pecking test")
+    subparsers = parser.add_subparsers(title="methods",
+                                       description="Valid methods",
+                                       help="Which method to run on the specified box")
+
+    # Add options for running a pecking test
+    run_parser = subparsers.add_parser("run",
+                                       description="Run a pecking test experiment")
+    run_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    run_parser.add_argument("-c", "--config",
+                            dest="config",
+                            help="Path to a config file. Default %s" % os.path.join(config_dir, "Box#.yaml"))
+    run_parser.add_argument("-b", "--bird",
+                            dest="bird",
+                            help="Name of the subject. Default specified in config file")
+    run_parser.add_argument("--preference-test",
+                            dest="preference",
+                            action="store_true",
+                            default=False,
+                            help="Preference test flag")
+    run_parser.add_argument("-e", "--experimenter",
+                            dest="experimenter",
+                            help="Name of the experimenter. Default specified in config file")
+    # run_parser.add_argument("-s", "--stimdir",
+    #                         dest="stimdir",
+    #                         help="Stimulus directory. Default specified in config file")
+    run_parser.add_argument("-o", "--outputdir",
+                            dest="outputdir",
+                            help="Data output directory. Default specified in  config file")
+    run_parser.set_defaults(func=run)
+
+
+    # Add options for testing a box
+    test_parser = subparsers.add_parser("test",
+                                        description="Test whether all components of a box are functioning. This will run through a quick check of all functions of the box.")
+    test_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    test_parser.add_argument("-s", "--sound", help="path to sound file to play")
+    test_parser.set_defaults(func=test)
+
+
+    # Add options for testing the audio of a box
+    test_audio_parser = subparsers.add_parser("test_audio",
+                                              description="Test just the audio of a box. This can be used to calibrate the sound level of the box. It will use the default sound unless provided and can be made to loop the sound using the --repeat option.")
+    test_audio_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    test_audio_parser.add_argument("-s", "--sound", help="path to sound file to play")
+    test_audio_parser.add_argument("--repeat", action="store_true", help="loop the sound")
+    test_audio_parser.set_defaults(func=test_audio)
+
+
+    # Add options for calibrating the pecking key of a box
+    calibrate_parser = subparsers.add_parser("calibrate", description="Calibrate the pecking key of a box. This will flash the button and print a timestamp to the console every time the pecking key is pressed.")
+    calibrate_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    calibrate_parser.set_defaults(func=calibrate)
+
+    # Shutdown script parser
+    shutdown_parser = subparsers.add_parser("shutdown", description="Shutdown a specified box")
+    shutdown_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    shutdown_parser.set_defaults(func=shutdown)
+
+    # Peck data parser
+    data_parser = subparsers.add_parser("data", description="Quick pecking test data analysis")
+    data_parser.add_argument("-d", "--date", dest="date", help="Date in the format of DD-MM-YY (e.g. 14-12-15) or one of \"today\" or \"yesterday\"")
+    data_parser.add_argument("-b", "--bird", dest="bird", help="Name of bird to check. If not specified, checks all birds for the specified date")
+    data_parser.set_defaults(func=data)
+
+    # Export CSV parser
+    csv_parser = subparsers.add_parser("export", description="Export CSV files to h5 file")
+    csv_parser.add_argument("-d", "--date", dest="date", help="Date in the format of DD-MM-YY (e.g. 14-12-15) or one of \"today\" or \"yesterday\"")
+    csv_parser.add_argument("-b", "--bird", dest="bird", help="Name of bird to check. If not specified, checks all birds for the specified date")
+    csv_parser.add_argument("-f", "--filename", dest="filename", help="Path to h5 file")
+    csv_parser.add_argument("--overwrite", help="Overwrite block in h5 file if it already exists", action="store_true")
+    csv_parser.add_argument("--all", help="Run export on all csv files found in %s" % data_dir, action="store_true")
+    csv_parser.set_defaults(func=export)
+
+    if len(sys.argv) == 1:
+        parser.print_usage()
+        sys.exit(1)
+
+    if argcomplete is not None:
+        argcomplete.autocomplete(parser)
+
+    # box_to_computer = {2: "pumpkin",
+    #                    3: "pumpkin",
+    #                    5: "chubbyninja",
+    #                    6: "chubbyninja"}
+    #
+    # def run_on_computer(args):
+    #     # Get the current hostname
+    #     hostname = socket.gethostname()
+    #     if hasattr(args, "box"):
+    #         box_hostname = box_to_computer.get(args.box, hostname)
+    #         if box_hostname != hostname:
+    #             cmd = ["ssh", box_hostname, " ".join(sys.argv)]
+    #             subprocess.check_output(cmd)
+    #     else:
+    #         args.func(args)
+
+    args = parser.parse_args()
+    args.func(args)

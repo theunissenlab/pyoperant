@@ -1,5 +1,9 @@
 import logging
+
+import numpy as np
+
 from pyoperant import queues, reinf, utils, trials
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,8 @@ class Block(queues.BaseHandler):
         The queue that will be iterated over.
     reinforcement: instance of Reinforcement class (ContinuousReinforcement())
         The reinforcement schedule to use for this block.
+    consumed: boolean indicating whether the underlying queue has been fully
+        consumed
 
     Examples
     --------
@@ -69,7 +75,6 @@ class Block(queues.BaseHandler):
         logger.debug("Initialize block: %s" % self)
 
     def __str__(self):
-
         desc = ["Block"]
         if self.conditions is not None:
             desc.append("%d stimulus conditions" % len(self.conditions))
@@ -79,31 +84,33 @@ class Block(queues.BaseHandler):
         return " - ".join(desc)
 
     def check_completion(self):
+        return self.consumed
 
-        # if self.end is not None:
-        #     if utils.check_time((self.start, self.end)): # Will start ever be none? Shouldn't be.
-        #         logger.debug("Block is complete due to time")
-        #         return True # Block is complete
+    def next_trial(self):
+        return next(self)
 
-        # if self.max_trials is not None:
-        #     if self.num_trials >= self.max_trials:
-        #         logger.debug("Block is complete due to trial count")
-        #         return True
+    def __next__(self):
+        condition = super(Block, self).__next__()
 
-        return False
+        # if self._trial is None or not self._trial.aborted:
+        self._trial_index += 1
+
+        self._trial = trials.Trial(index=self._trial_index,
+                             experiment=self.experiment,
+                             condition=condition,
+                             block=self)
+        return self._trial
+
+    def next(self):
+        """For python 2 compatibility with the next() function"""
+        return self.__next__()
 
     def __iter__(self):
-
         # Loop through the queue generator
-        trial_index = 0
-        for condition in self.queue:
-            # Create a trial instance
-            trial_index += 1
-            trial = trials.Trial(index=trial_index,
-                                 experiment=self.experiment,
-                                 condition=condition,
-                                 block=self)
-            yield trial
+        self._trial_index = 0
+        self._trial = None
+
+        return self
 
 
 class BlockHandler(queues.BaseHandler):
@@ -139,16 +146,84 @@ class BlockHandler(queues.BaseHandler):
     """
 
     def __init__(self, blocks, queue=queues.block_queue, **queue_parameters):
-
         self.blocks = blocks
         self.block_index = 0
         super(BlockHandler, self).__init__(queue=queue,
                                            items=blocks,
                                            **queue_parameters)
 
-    def __iter__(self):
+    def __next__(self):
+        block = super(BlockHandler, self).__next__()
+        self.block_index += 1
+        block.index = self.block_index
+        return block
 
-        for block in self.queue:
-            self.block_index += 1
-            block.index = self.block_index
-            yield block
+    def __iter__(self):
+        return self
+
+
+class MixedBlockHandler(BlockHandler):
+    """Switching between a triggered and autoplaying block
+
+    Parameters
+    ----------
+    **kwargs:
+        Mapping of block name to block. The block must allow for manual
+        iteration through the next() function and the ability to
+        be reset()
+
+    Attributes
+    ----------
+    blocks: list of blocks.Block objects
+    _iters: dictionary mapping block name to block iterator
+        (over uncompleted trials)
+    """
+
+    def __init__(self, **kwargs):
+        self.blocks = kwargs
+        self.reset()
+
+    def reset(self):
+        """Reset blocks and iterators
+
+        Parameters
+        ----------
+        block_name: str
+            Name of the block to reset. If None, reset all blocks.
+        """
+        self._iters = dict(
+            (block_name, iter(block))
+            for block_name, block in self.blocks.items()
+        )
+
+        for block in self.blocks.values():
+            block.reset()
+
+        self._trial_index = 0
+
+    def check_completion(self, block_name=None):
+        """Check for block completion
+
+        Use block_name to check a single block, or
+        leave as None to check if all blocks are complete
+        """
+        if block_name is not None:
+            return self.blocks[block_name].check_completion()
+        else:
+            return np.all([
+                block.check_completion() for block in self.blocks.values()
+            ])
+
+    def reset_one(self, block_name):
+        block = self.blocks[block_name]
+        self._iters[block_name] = iter(block)
+        block.reset()
+
+    def next_trial(self, block_name):
+        """Get next trial by block name and increment trial index
+        """
+        self._trial_index += 1
+        trial = next(self._iters[block_name])
+        trial.index = self._trial_index
+
+        return trial

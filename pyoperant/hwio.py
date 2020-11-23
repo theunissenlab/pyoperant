@@ -135,6 +135,57 @@ class BooleanInput(BaseIO):
 
         return input_time
 
+class NonBooleanInput(BooleanInput):
+    def __init__(self, interface=None, params={},
+                 *args, **kwargs):
+        super(NonBooleanInput, self).__init__(interface=interface,
+                                           params=params,
+                                           *args,
+                                           **kwargs)
+        self.last_value = None
+        self.config()
+
+    def config(self):
+        """ Calls the interface's _config_read method with the keyword arguments
+        in params
+        Returns
+        -------
+        bool
+            True if configuration succeeded
+        """
+
+        if not hasattr(self.interface, "_config_read"):
+            return False
+
+        return self.interface._config_read(**self.params)
+
+    def read(self):
+        """ Read the status of the boolean input
+        Returns
+        -------
+        bool
+            The current status reported by the interface
+        """
+
+        self.last_value = self.interface._read(**self.params)
+        return self.last_value
+
+    def poll(self, timeout=None):
+        """ Runs a loop, querying for a GUI event.
+        Parameters
+        ----------
+        timeout: float
+        Returns
+        -------
+        dict or None
+        """
+
+        event = self.interface._poll(timeout=timeout,
+                                          last_value=self.last_value,
+                                          **self.params)
+        return event
+
+
 class BooleanOutput(BaseIO):
     """Class which holds information about boolean outputs and abstracts the
     methods of writing to them
@@ -424,8 +475,59 @@ class AudioOutput(BaseIO):
     def queue(self, wav_filename, event=None):
         return self.interface._queue_wav(wav_filename, event=event, **self.params)
 
-    def play(self, event=None):
-        return self.interface._play_wav(event=event, **self.params)
+    def play(self, event=None, gain=None):
+        return self.interface._play_wav(event=event, gain=gain, **self.params)
 
     def stop(self, event=None):
         return self.interface._stop_wav(event=event, **self.params)
+
+
+class AudioInput(BaseIO):
+    """
+    """
+
+    def __init__(self, interface=None, params={}, *args, **kwargs):
+        super(AudioInput, self).__init__(interface=interface,
+                                          params=params,
+                                          *args,
+                                          **kwargs)
+
+        assert hasattr(self.interface, '_record')
+        assert hasattr(self.interface, '_stop_record')
+        self.key = 0
+        self._recordings = {}
+        self.config()
+
+    def config(self):
+        """ Calls the interface's config_write_analog method with the keyword
+        arguments in params
+
+        Returns
+        -------
+        bool
+            True if configuration succeeded
+        """
+        if not hasattr(self.interface, "_config_read_analog"):
+            return False
+
+        logger.debug("Configuring AudioInput to receive on interface % s" % self.interface)
+        return self.interface._config_read_analog(**self.params)
+
+    def start_recording(self, event=None, duration=None, dest=None):
+        self.key += 1
+        self._recordings[self.key] = self.interface._record(
+            event=event,
+            duration=duration,
+            dest=dest,
+            **self.params
+        )
+        return self.key
+
+    def stop_recording(self, event=None, key=None):
+        thread, quit_signal = self._recordings[key]
+        return self.interface._stop_record(
+            event=event,
+            thread=thread,
+            quit_signal=quit_signal,
+            **self.params
+        )

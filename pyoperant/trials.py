@@ -1,9 +1,13 @@
 import logging
 import datetime as dt
-from pyoperant import EndSession
+from pyoperant import EndSession, StimulusMissing
 from pyoperant.events import events
 
 logger = logging.getLogger(__name__)
+
+
+class AbortTrial(Exception):
+    pass
 
 
 class Trial(object):
@@ -67,6 +71,7 @@ class Trial(object):
         self.correct = False
         self.reward = False
         self.punish = False
+        self.aborted = False
 
         # Trial event information
         self.event = dict(name="Trial",
@@ -80,14 +85,11 @@ class Trial(object):
 
     def run(self):
         """ Runs the trial
-
         Summary
         -------
         The main structure is as follows:
-
         Get stimulus -> Initiate trial -> Play stimulus -> Receive response ->
         Consequate response -> Finish trial -> Save data.
-
         The stimulus, response and consequate stages are broken into pre, main,
         and post stages. Only use the stages you need in your experiment.
         """
@@ -95,7 +97,11 @@ class Trial(object):
         self.experiment.this_trial = self
 
         # Get the stimulus
-        self.stimulus = self.condition.get()
+        try:
+            self.stimulus = self.experiment.select_stimulus(self.condition)
+        except StimulusMissing:
+            logger.warn("Could not find stimulus for this trial.\n{}\nAborting.".format(self.condition))
+            return
 
         # Any pre-trial logging / computations
         self.experiment.trial_pre()

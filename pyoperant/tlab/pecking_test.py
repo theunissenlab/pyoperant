@@ -2,11 +2,17 @@
 import os
 import logging
 import datetime as dt
+
+import numpy as np
+
+import pyoperant.blocks as blocks_
 from pyoperant import configure
 from pyoperant import stimuli
 from pyoperant.tlab.custom_logging import PollingFilter, AudioPlaybackFilter
 from pyoperant.behavior.go_no_go_interrupt import GoNoGoInterrupt
-from pyoperant.tlab import local_tlab
+from pyoperant.tlab import local_tlab, record_trials
+from pyoperant import queues
+from pyoperant import utils
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,25 @@ class ProbeCondition(stimuli.StimulusConditionWav):
                                              shuffle=shuffle,
                                              *args, **kwargs)
 
+
+class PlaybackCondition(stimuli.StimulusConditionWav):
+    """ Probe stimuli are not consequated and should be sampled as evenly as
+    possible. This is done by setting replacement to False and shuffle to True.
+    """
+
+    def __init__(self, name="Playback",
+                 response=False,
+                 is_rewarded=False,
+                 is_punished=False,
+                 *args, **kwargs):
+
+        super(PlaybackCondition, self).__init__(name=name,
+                                             response=response,
+                                             is_rewarded=is_rewarded,
+                                             is_punished=is_punished,
+                                             *args, **kwargs)
+
+
 class PeckingTest(GoNoGoInterrupt):
     """A go no-go interruption experiment for the Theunissen lab
 
@@ -50,7 +75,6 @@ class PeckingTest(GoNoGoInterrupt):
     pyoperant.behavior.GoNoGoInterrupt
     """
     def __init__(self, *args, **kwargs):
-
         super(PeckingTest, self).__init__(*args, **kwargs)
 
         # if self.parameters.get("log_polling", False):
@@ -59,7 +83,6 @@ class PeckingTest(GoNoGoInterrupt):
             self.config_playback_log()
 
     def config_polling_log(self):
-
         filename = self.parameters.get("log_polling_file", "keydata.log")
         if len(os.path.split(filename)[0]) == 0:
             filename = os.path.join(self.experiment_path, filename)
@@ -127,6 +150,124 @@ class PeckingTest(GoNoGoInterrupt):
             self.start_immediately = True
 
 
+class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
+    """A go no-go interruption experiment combined with occasional playbacks
+
+    Parameters
+    ----------
+    block_queue: dict
+
+    Additional Parameters
+    ---------------------
+    TODO
+
+    For all other parameters, see pyoperant.behavior.base.BaseExp and
+    pyoperant.behavior.GoNoGoInterrupt and pyoperant.tlab.PeckingTest
+    """
+
+    def __init__(
+            self,
+            block_queue=queues.block_queue,
+            conditions=None,
+            inactivity_before_playback=[5.0, 20.0],
+            inactivity_before_playback_restart=3600.0,
+            queue=queues.random_queue,
+            queue_parameters=None,
+            record_audio=None,
+            recorded_audio_path=None,
+            reinforcement=None,
+            *args,
+            **kwargs
+        ):
+
+        pecking_block = blocks_.Block(
+            conditions["pecking"],
+            queue=queue,
+            reinforcement=reinforcement,
+            **queue_parameters["pecking"]
+        )
+
+        playback_block = blocks_.Block(
+            conditions["playback"],
+            queue=queue,
+            **queue_parameters["playback"]
+        )
+
+        block_queue = blocks_.MixedBlockHandler(
+            pecking=pecking_block,
+            playback=playback_block,
+        )
+
+        self.record_audio = record_audio
+        self.recording_key = None
+        self.recording_directory = recorded_audio_path
+
+        self.inactivity_before_playback = inactivity_before_playback
+        self.inactivity_before_playback_restart = inactivity_before_playback_restart
+        self.last_playback_reset = dt.datetime.now()
+
+        super(PeckingAndPlaybackTest, self).__init__(*args, block_queue=block_queue, **kwargs)
+
+        if np.any([self.record_audio.values()]):
+            if not hasattr(self.panel, "mic"):
+                raise ValueError("Cannot record audio if panel has no mic.")
+
+    def get_seconds_from_last_reset(self):
+        return (dt.datetime.now() - self.last_playback_reset).total_seconds()
+
+    def trial_iter(self, block_queue):
+        for block in block_queue.blocks.values():
+            block.experiment = self
+
+        while not block_queue.check_completion():
+            if not self.start_immediately:
+                if block_queue.check_completion("playback"):
+                    since_reset = self.get_seconds_from_last_reset()
+                    timeout = self.inactivity_before_playback_restart - since_reset
+                else:
+                    timeout = np.random.uniform(*self.inactivity_before_playback)
+                response = self.panel.response_port.poll(timeout=timeout)
+            else:
+                response = True
+
+            if response is None:  # timeout
+                if block_queue.check_completion("playback"):
+                    self.last_playback_reset = dt.datetime.now()
+                    block_queue.reset_one("playback")
+                yield block_queue.next_trial("playback")
+            else:
+                yield block_queue.next_trial("pecking")
+
+    def stimulus_pre(self):
+        super(PeckingAndPlaybackTest, self).stimulus_pre()
+        for block_name in self.record_audio:
+            if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
+                self.recording_key = self.panel.mic.record(
+                    duration=1.0,
+                    dest=self.get_wavfile_path()
+                )
+                break
+
+        for block_name in self.block_queue.blocks:
+            if self.this_trial.block == self.block_queue.blocks[block_name]:
+                self.panel.speaker.set_gain(self.gain.get(block_name, None))
+                break
+
+    def response_post(self):
+        super(PeckingAndPlaybackTest, self).response_post()
+        if self.recording_key is not None:
+            self.panel.mic.stop(self.recording_key)
+            self.recording_key = None
+
+    def response_main(self):
+        if self.this_trial.block == self.block_queue.blocks["pecking"]:
+            GoNoGoInterrupt.response_main(self)
+        else:
+            self.this_trial.rt = np.nan
+            utils.wait(self.this_trial.stimulus.duration)
+            self.panel.speaker.stop()
+
+
 def run_pecking_test(args):
     """
     Start a new pecking test and run it using the modifications provided by args.
@@ -185,10 +326,18 @@ def run_pecking_test(args):
     data_link = os.path.expanduser(os.path.join("~", "data_%s" % box_name))
     if os.path.exists(data_link):
         os.remove(data_link)
+
     os.symlink(parameters["experiment_path"], data_link)
 
     # Create experiment object
-    exp = PeckingTest(**parameters)
+    if args.preference:
+        exp = PeckingAndPlaybackTest(**parameters)
+    else:
+        if (isinstance(parameters["conditions"], dict) and
+                "pecking" in parameters["conditions"]):
+            parameters["conditions"] = parameters["conditions"]["pecking"]
+            parameters["queue_parameters"] = parameters["queue_parameters"]["pecking"]
+        exp = PeckingTest(**parameters)
     exp.run()
 
 

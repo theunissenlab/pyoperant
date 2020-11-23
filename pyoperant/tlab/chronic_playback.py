@@ -4,18 +4,23 @@ import hashlib
 import logging
 import datetime as dt
 import numpy as np
+import scipy.io.wavfile
 from pyoperant.behavior import simple_stimulus_playback
 from pyoperant.errors import EndSession
+from pyoperant.tlab import record_trials
 from pyoperant import utils, stimuli
 
 logger = logging.getLogger(__name__)
 
 
-class ChronicPlayback(simple_stimulus_playback.SimpleStimulusPlayback):
+class ChronicPlayback(record_trials.RecordTrialsMixin, simple_stimulus_playback.SimpleStimulusPlayback):
     """ Theunissen lab simple playback experiment. For documentation of
     arguments see behavior.base.BaseExp and
     behavior.simple_stimulus_playback.SimpleStimulusPlayback
     """
+    def __init__(self, recording_directory=None, *args, **kwargs):
+        self.recording_directory = recording_directory
+        super(ChronicPlayback, self).__init__(*args, **kwargs)
 
     def stimulus_main(self):
         """ Queue the sound and play it, while adding metadata """

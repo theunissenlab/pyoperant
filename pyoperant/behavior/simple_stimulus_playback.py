@@ -74,11 +74,12 @@ class SimpleStimulusPlayback(base.BaseExp):
                 name = stim_dict.get("name", "Playback%d" % ii)
                 directory = stim_dict["directory"]
                 # Create a stimulus condition for this directory
-                condition = stimuli.StimulusConditionWav(name=name,
-                                                         file_path=directory,
-                                                         is_rewarded=False,
-                                                         is_punished=False,
-                                                         response=False)
+                condition = stimuli.StimulusConditionWav(
+                    name=name,
+                    file_path=directory,
+                    is_rewarded=False,
+                    is_punished=False,
+                    response=False)
 
                 # Create a block for this condition
                 block = blocks_.Block([condition],
@@ -92,21 +93,27 @@ class SimpleStimulusPlayback(base.BaseExp):
         super(SimpleStimulusPlayback, self).__init__(blocks=blocks,
                                                      *args, **kwargs)
 
+    def trial_iter(self, block_queue):
+        for self.this_block in self.block_queue:
+            self.this_block.experiment = self
+            logger.info("Beginning block #%d" % self.this_block.index)
+
+            for trial in self.this_block:
+                if isinstance(self.intertrial_interval, (list, tuple)):
+                    self.iti = np.random.uniform(*self.intertrial_interval)
+                else:
+                    self.iti = self.intertrial_interval
+
+                logger.debug("Waiting for %1.3f seconds" % self.iti)
+                utils.wait(self.iti)
+                yield trial
 
     def trial_pre(self):
         """ Store data that is specific to this experiment, and compute a wait time for an intertrial interval
         """
-
         stimulus = self.this_trial.stimulus.file_origin
-        if isinstance(self.intertrial_interval, (list, tuple)):
-            iti = np.random.uniform(*self.intertrial_interval)
-        else:
-            iti = self.intertrial_interval
-
-        logger.debug("Waiting for %1.3f seconds" % iti)
         self.this_trial.annotate(stimulus_name=stimulus,
-                                 intertrial_interval=iti)
-        utils.wait(iti)
+                                 intertrial_interval=self.iti)
 
     def stimulus_main(self):
         """ Queue the sound and play it """

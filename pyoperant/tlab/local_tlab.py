@@ -56,7 +56,7 @@ class Panel125(panels.BasePanel):
 
     _default_sound_file = "/home/fet/test_song.wav"
 
-    def __init__(self, arduino, speaker, name=None, *args, **kwargs):
+    def __init__(self, arduino, speaker, mic=None, name=None, *args, **kwargs):
 
         super(Panel125, self).__init__(self, *args, **kwargs)
         self.name = name
@@ -83,6 +83,12 @@ class Panel125(panels.BasePanel):
                                     params=dict(channel=10))
         # Create an audio output
         audio_out = hwio.AudioOutput(interface=headphone_out)
+
+        # Create a mic input
+        if mic is not None:
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic)
+            audio_in = hwio.AudioInput(interface=mic_in)
+            self.mic = components.Microphone(audio_in)
 
         # Add boolean hwios to inputs and outputs
         self.inputs = [button]

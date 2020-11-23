@@ -1,9 +1,12 @@
+
 import fnmatch
 import os
 import wave
 import logging
 import random
+from collections import defaultdict
 from contextlib import closing
+from pyoperant import StimulusMissing
 from pyoperant.utils import Event, filter_files
 
 logger = logging.getLogger(__name__)
@@ -139,24 +142,30 @@ class StimulusCondition(object):
         self.is_punished = is_punished
         self.shuffle = shuffle
         self.replacement = replacement
+        self.file_path = file_path
+        self.files = files
+        self.file_pattern = file_pattern
+        self.recursive = recursive
 
-        if files is None:
-            self.files = filter_files(file_path,
-                                      file_pattern=file_pattern,
-                                      recursive=recursive)
-        else:
-            self.files = files
-
-        self._index_list = range(len(self.files))
-        if self.shuffle:
-            random.shuffle(self._index_list)
+        self.setup_stimuli_list()
 
         logger.debug("Created new condition: %s" % self)
 
     def __str__(self):
-
         return "".join(["Condition %s: " % self.name,
                         "# files = %d" % len(self.files)])
+
+    def setup_stimuli_list(self):
+        if self.files is None:
+            self.files = filter_files(self.file_path,
+                                      file_pattern=self.file_pattern,
+                                      recursive=self.recursive)
+        else:
+            self.files = self.files
+
+        self._index_list = range(len(self.files))
+        if self.shuffle:
+            random.shuffle(self._index_list)
 
     def get(self):
         """ Gets a single file from this condition's list of files. If
@@ -192,5 +201,75 @@ class StimulusConditionWav(StimulusCondition):
     def get(self):
         """ Gets an AuditoryStimulus instance from a chosen .wav file """
         wavfile = super(StimulusConditionWav, self).get()
+
+        return AuditoryStimulus.from_wav(wavfile)
+
+
+class DynamicStimulusCondition(StimulusCondition):
+    """Stimulus condition that always pulls from updated directory
+    Stimulus condition that allows for a dynamically updated stimulus directory
+    during the experiment. This is being included in order to play back sounds
+    that were recorded online during the same experimentself.
+    Always plays the most recently added stimulus.
+    The base StimulusCondition only reads the directory contents once
+    (during initialization)
+    """
+    def __init__(self, *args, **kwargs):
+        self.file_access_counter = defaultdict(int)
+        self._last_selected = set()
+        self._index_list = None
+        super(DynamicStimulusCondition, self).__init__(*args, **kwargs)
+
+    def setup_stimuli_list(self):
+        files = filter_files(self.file_path,
+                                  file_pattern=self.file_pattern,
+                                  recursive=self.recursive)
+        self.files = list(files)
+        if self._index_list is None:
+            self._index_list = []
+
+    def get(self, selected=None):
+        self.setup_stimuli_list()
+
+        valid_files = self.files
+
+        if not len(valid_files):
+            raise StimulusMissing
+        if isinstance(selected, basestring) and selected not in valid_files:
+            # Might not need this check if we only display valid files
+            raise StimulusMissing
+
+        if selected is None:
+            # Play the most recently added stimulus file
+            file_selected = max(valid_files, key=os.path.getmtime)
+        elif isinstance(selected, basestring):
+            file_selected = selected
+        else:
+            if len(self._index_list) and self._last_selected and set(selected) == self._last_selected:
+                pass
+            else:
+                self._index_list = list(range(len(selected)))
+                random.shuffle(self._index_list)
+
+            self._last_selected = set(selected)
+            index = self._index_list.pop(0)
+            file_selected = selected[index]
+
+        logger.debug("Selected file {}".format(file_selected))
+        return file_selected
+
+
+class DynamicStimulusConditionWav(DynamicStimulusCondition):
+    """ Modifies DynamicStimulusCondition to only include .wav files. For usage
+    information see DynamicStimulusCondition.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(DynamicStimulusConditionWav, self).__init__(file_pattern="*.wav",
+                                                   *args, **kwargs)
+
+    def get(self, *args, **kwargs):
+        """ Gets an AuditoryStimulus instance from a chosen .wav file """
+        wavfile = super(DynamicStimulusConditionWav, self).get(*args, **kwargs)
 
         return AuditoryStimulus.from_wav(wavfile)
