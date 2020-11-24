@@ -207,7 +207,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         self.inactivity_before_playback_restart = inactivity_before_playback_restart
         self.last_playback_reset = dt.datetime.now()
 
-        super(PeckingAndPlaybackTest, self).__init__(*args, block_queue=block_queue, **kwargs)
+        super().__init__(*args, block_queue=block_queue, **kwargs)
 
         if np.any([self.record_audio.values()]):
             if not hasattr(self.panel, "mic"):
@@ -278,7 +278,7 @@ def run_pecking_test(args):
     Start a new pecking test and run it using the modifications provided by args.
     """
 
-    print "Called run_pecking_test"
+    print("Called run_pecking_test")
     box_name = "Box%d" % args.box
     config_dir = os.path.expanduser(os.path.join("~", "configs"))
 

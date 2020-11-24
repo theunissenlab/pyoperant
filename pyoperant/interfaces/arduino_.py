@@ -1,3 +1,4 @@
+import sys
 import time
 import datetime
 import serial
@@ -65,8 +66,7 @@ class ArduinoInterface(base_.BaseInterface):
                           )
 
     def __init__(self, device_name, baud_rate=19200, *args, **kwargs):
-
-        super(ArduinoInterface, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self.device_name = device_name
         self.baud_rate = baud_rate
@@ -105,8 +105,8 @@ class ArduinoInterface(base_.BaseInterface):
 
     def close(self):
         ''' Close a serial connection for the device '''
-
-        logger.debug("Closing %s" % self)
+        if not sys.is_finalizing():
+            logger.debug("Closing %s" % self)
         self.device.close()
 
     def _config_read(self, channel, invert=False, **kwargs):

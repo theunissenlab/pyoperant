@@ -1,5 +1,5 @@
 import threading
-import Queue
+import queue
 # from multiprocessing import Process, Queue
 import datetime as dt
 import logging
@@ -97,7 +97,7 @@ class EventHandler(object):
         self.component = component
 
         # Initialize the queue
-        self.queue = Queue.Queue(maxsize=0)
+        self.queue = queue.Queue(maxsize=0)
         #self.queue = Queue(maxsize=0)
 
         # Initialize the thread
@@ -295,7 +295,7 @@ class EventDToAHandler(EventHandler):
         self.scaling = scaling
         self.component = component
         self.map_to_bit = dict()
-        self.queue = Queue.Queue(maxsize=0)
+        self.queue = queue.Queue(maxsize=0)
         for key, value in interface_params.items():
             setattr(self, key, value)
 

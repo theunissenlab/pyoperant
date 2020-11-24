@@ -2,6 +2,7 @@ from ctypes import *
 from contextlib import contextmanager
 import os
 import logging
+import sys
 import threading
 import numpy as np
 import scipy.io.wavfile
@@ -82,7 +83,7 @@ class PyAudioInterface(base_.AudioInterface):
 
     """
     def __init__(self, device_name="default", input_rate=44100, *args, **kwargs):
-        super(PyAudioInterface, self).__init__(*args,**kwargs)
+        super().__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
         self.wf = None
@@ -114,7 +115,9 @@ class PyAudioInterface(base_.AudioInterface):
         self.device_info = self.pa.get_device_info_by_index(self.device_index)
 
     def close(self):
-        logger.debug("Closing device")
+        if not sys.is_finalizing():
+            logger.debug("Closing device")
+
         self.abort_signal.set()
         self.abort_signal = threading.Event()
 
@@ -333,6 +336,6 @@ if __name__ == "__main__":
     with log_alsa_warnings():
         pa = pyaudio.PyAudio()
     pa.terminate()
-    print "-" * 40
+    print("-" * 40)
     pa = pyaudio.PyAudio()
     pa.terminate()

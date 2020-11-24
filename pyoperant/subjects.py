@@ -124,7 +124,7 @@ class CSVStore(object):
         self.filename = filename
         self.fields = fields
 
-        with open(self.filename, 'ab') as data_fh:
+        with open(self.filename, 'a') as data_fh:
             trialWriter = csv.writer(data_fh)
             trialWriter.writerow(self.fields)
 
@@ -148,7 +148,7 @@ class CSVStore(object):
             True if store succeeded
         """
 
-        with open(self.filename, 'ab') as data_fh:
+        with open(self.filename, 'a') as data_fh:
             trialWriter = csv.DictWriter(data_fh,
                                          fieldnames=self.fields,
                                          extrasaction='ignore')

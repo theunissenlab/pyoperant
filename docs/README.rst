@@ -5,6 +5,16 @@ Pyoperant is a framework to easily construct and share new operant behavior para
 
 With PyOperant, you can write a single behavior script that works across different species, different computers, different hardware, different rewards, different modalities.
 
+Installation
+------------
+To get set up, install python and python header files and portaudio (which is necsessary for PyAudio)
+
+```shell
+sudo apt install python python-dev portaudio19-dev
+```
+
+When installing portaudio there was a prompt to allow realtime priority to jackd. I don't know what this means but I said yes.
+
 Operant logic is easy
 ---------------------
 
