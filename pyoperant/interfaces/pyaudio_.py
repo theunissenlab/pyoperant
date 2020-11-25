@@ -130,7 +130,7 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf = None
         self.pa.terminate()
 
-    def _run_play(self, wf=None, gain=None, quit_signal=None, abort_signal=None):
+    def _run_play(self, wf=None, quit_signal=None, abort_signal=None):
         """Function to play back a sound
 
         Plays back a sound in chunks of 512 until the wav file is completed
@@ -139,8 +139,6 @@ class PyAudioInterface(base_.AudioInterface):
         Parameters
         ----------
         wf : wav file opened with wave.open
-        gain : float
-            factor by which to scale the output signal
         quit_signal : threading.Event
             thread-safe signal that will end the playback when the event is set
         abort_signal : threading.Event
@@ -169,8 +167,8 @@ class PyAudioInterface(base_.AudioInterface):
             dtype, max_val = self._get_dtype(wf)
             data = np.frombuffer(data, dtype)
 
-            if gain:
-                data = data * np.power(10.0, gain / 20.0)
+            if self.gain:
+                data = data * np.power(10.0, self.gain / 20.0)
 
             data = data.astype(dtype).tostring()
             stream.write(data)
@@ -203,7 +201,6 @@ class PyAudioInterface(base_.AudioInterface):
             target=self._run_play,
             kwargs={
                 "wf": self.wf,
-                "gain": self.gain,
                 "quit_signal": new_quit_signal,
                 "abort_signal": self.abort_signal
             }
@@ -300,10 +297,8 @@ class PyAudioInterface(base_.AudioInterface):
         self.validate()
         self._playback_quit_signal = self._get_stream(
             start=start,
-            gain=self.gain,
             event=event
         )
-        self.set_gain(None)
 
     def _play_wav(self, event=None, gain=None, **kwargs):
         logger.debug("Playing wavfile")
