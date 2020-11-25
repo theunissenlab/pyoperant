@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 # TODO: Clean up _stop_wav logging changes
 
 
+def list_audio_devices():
+    pa = pyaudio.PyAudio()
+    return [
+        pa.get_device_info_by_index(index)['name']
+        for index in range(pa.get_device_count())
+    ]
+
+
 # Modify the alsa error function to suppress needless warnings
 # Code derived from answer by Nils Werner at:
 # http://stackoverflow.com/questions/7088672/pyaudio-working-but-spits-out-error-messages-each-time
@@ -145,14 +153,18 @@ class PyAudioInterface(base_.AudioInterface):
         """
         chunk = 1024
 
-        stream = self.pa.open(
-           format=self.pa.get_format_from_width(wf.getsampwidth()),
-           channels=wf.getnchannels(),
-           rate=wf.getframerate(),
-           output=True,
-           frames_per_buffer=chunk,
-           output_device_index=self.device_index,
-        )
+        try:
+            stream = self.pa.open(
+               format=self.pa.get_format_from_width(wf.getsampwidth()),
+               channels=wf.getnchannels(),
+               rate=wf.getframerate(),
+               output=True,
+               frames_per_buffer=chunk,
+               output_device_index=self.device_index,
+            )
+        except IOError:
+            logging.error("IOError on opening pa stream. Not sure why")
+            raise
 
         data = wf.readframes(chunk)
 
@@ -330,6 +342,20 @@ class PyAudioInterface(base_.AudioInterface):
     def _stop_wav(self, event=None, **kwargs):
         self._playback_quit_signal.set()
         self.play_thread = None
+
+
+from unittest import mock
+
+class MockPyAudioInterface(PyAudioInterface):
+    pass
+    # def open(self):
+        # """Don't actually locate an audio device"""
+        # self.pa = pyaudio.PyAudio()
+        # Get the default audio device here instead...
+        # with mock.patch("pyaudio.PyAudio.get_device_info_by_index", return_value={"name": self.device_name}):
+            # return super().open()
+
+    
 
 if __name__ == "__main__":
 

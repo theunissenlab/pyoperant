@@ -14,7 +14,7 @@ stim_directory: &stims ""
 experiment_path: &root "" # This is the root directory and will be appended with subject and date
 
 # Panel
-panel: !!python/object/apply:pyoperant.tlab.local_tlab.Box3 {}
+panel: !!python/object/apply:pyoperant.tlab.local_tlab.BoxVirtual {}
 
 # Experiment properties
 reward_value: 12.0

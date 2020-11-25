@@ -3,6 +3,7 @@ import os
 import logging
 import argparse
 from functools import wraps
+from unittest import mock
 
 from pyoperant import hwio, components, panels, utils, InterfaceError
 from pyoperant.interfaces import pyaudio_, arduino_
@@ -56,9 +57,13 @@ class Panel125(panels.BasePanel):
 
     _default_sound_file = "/home/fet/test_song.wav"
 
-    def __init__(self, arduino, speaker, mic=None, name=None, *args, **kwargs):
-
+    def __init__(self, arduino=None, speaker=None, mic=None, name=None, *args, **kwargs):
         super(Panel125, self).__init__(self, *args, **kwargs)
+        if arduino is None:
+            raise ValueError("Arduino serial port not specified or configured.")
+        if speaker is None:
+            raise ValueError("Speaker device not specified or configured.")
+
         self.name = name
 
         # Initialize interfaces
@@ -140,7 +145,10 @@ class Panel125(panels.BasePanel):
         self.reset()
 
     @shutdown_on_error
-    def test(self):
+    def test(self, filename=None):
+        if filename is None:
+            filename = self._default_sound_file
+
         self.reset()
 
         print("Flashing pecking port")
@@ -149,14 +157,13 @@ class Panel125(panels.BasePanel):
         self.reward(5.0)
 
         print("Playing test sound")
-        self.speaker.queue(self._default_sound_file)
+        self.speaker.queue(filename)
         self.speaker.play()
 
         print("Polling for input. Peck to proceed (10 second timeout)")
         self.peck_port.poll(10)
         self.speaker.stop()
         self.reset()
-        return True
 
     @shutdown_on_error
     def calibrate(self):
@@ -272,6 +279,27 @@ class Box3(Panel125):
                                    speaker="speaker0", *args, **kwargs)
 
 
+class BoxVirtual(Panel125):
+
+    _default_sound_file = "/home/tlee/code/neosound/data/zbsong.wav"
+
+    @mock.patch("pyoperant.interfaces.pyaudio_.PyAudioInterface", pyaudio_.MockPyAudioInterface)
+    @mock.patch("pyoperant.interfaces.arduino_.ArduinoInterface", arduino_.MockArduinoInterface)
+    def __init__(self, *args, **kwargs):
+        defaults = dict(
+            name="Virtual Box",
+            arduino="fakearduinoboi",
+            speaker="HD-Audio Generic: ALC887-VD Analog (hw:1,0)",
+            mic="default",
+        )
+        defaults.update(**kwargs)
+        super(BoxVirtual, self).__init__(
+            *args,
+            **defaults
+        )
+
+
+
 class Thing13(Panel125):
 
     _default_sound_file = "/home/tlee/code/neosound/data/zbsong.wav"
@@ -282,16 +310,27 @@ class Thing13(Panel125):
                                       speaker="pulse", *args, **kwargs)
 
 
+def _identify_box(args):
+    if args.box == "virtual":
+        Box = BoxVirtual
+    else:
+        Box = globals()["Box{}".format(args.box)]
+    return Box
+
+
 # Scripting methods
 def test_box(args):
+    kwargs = dict()
+    if args.sound is not None:
+        kwargs["filename"] = args.sound
 
-    box = globals()["Box%d" % args.box]()
-    box.test()
+    box = _identify_box(args)()
+    box.test(**kwargs)
 
 
 def test_box_audio(args):
 
-    box = globals()["Box%d" % args.box]()
+    box = _identify_box(args)()
     kwargs = dict()
     if args.sound is not None:
         kwargs["filename"] = args.sound
@@ -301,15 +340,45 @@ def test_box_audio(args):
     box.test_audio(**kwargs)
 
 
-def calibrate_box(args):
+def debug_box_audio(args):
+    Box = _identify_box(args)
+    audio_devices = pyaudio_.list_audio_devices()
 
-    box = globals()["Box%d" % args.box]()
+    box_kwargs = dict()
+
+    print("\n", "*" * 80)
+    print("Debugging audio...")
+    print()
+    idx = input("""Override speaker?\n{}\n""".format("\n".join(
+        ["{}: {}".format(i, name) for i, name in enumerate(audio_devices)]
+    )))
+    if idx in audio_devices:
+        box_kwargs["speaker"] = idx
+    else:
+        try:
+            box_kwargs["speaker"] = audio_devices[int(idx)]
+        except:
+            pass
+    box = Box(**box_kwargs)
+
+    kwargs = dict()
+    if args.sound is not None:
+        kwargs["filename"] = args.sound
+    if args.repeat is not None:
+        kwargs["repeat"] = args.repeat
+
+    box.test_audio(**kwargs)
+    print("Did the audio come out where it was supposed to?")
+    print("Debugging completed. Don't forget to like and subscribe.")
+
+
+def calibrate_box(args):
+    box = _identify_box(args)()
     box.calibrate()
 
 
 def shutdown_box(args):
-
-    box = globals()["Box%d" % args.box]()
+    box = _identify_box(args)()
     box.sleep()
 
 
@@ -323,28 +392,35 @@ if __name__ == "__main__":
 
     test_parser = subparsers.add_parser("test",
                                         description="Test whether all components of a box are functioning")
-    test_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    test_parser.add_argument("box", help="Which box to run (e.g. 5) ('virtual' for test)", type=str)
     test_parser.add_argument("-s", "--sound", help="path to sound file to play")
     test_parser.set_defaults(func=test_box)
 
     # The test_audio script parser
     test_audio_parser = subparsers.add_parser("test_audio",
                                               description="Test just the audio of a box")
-    test_audio_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    test_audio_parser.add_argument("box", help="Which box to run (e.g. 5) ('virtual' for test)", type=str)
     test_audio_parser.add_argument("-s", "--sound", help="path to sound file to play")
     test_audio_parser.add_argument("--repeat", action="store_true", help="loop the sound")
     test_audio_parser.set_defaults(func=test_box_audio)
 
+    debug_audio_parser = subparsers.add_parser("debug_audio",
+                                              description="Assistance in debugging audio issues")
+    debug_audio_parser.add_argument("box", help="Which box to run (e.g. 5) ('virtual' for test)", type=str)
+    debug_audio_parser.add_argument("-s", "--sound", help="path to sound file to play")
+    debug_audio_parser.add_argument("--repeat", action="store_true", help="loop the sound")
+    debug_audio_parser.set_defaults(func=debug_box_audio)
+
     # The calibrate script parser
     calibrate_parser = subparsers.add_parser("calibrate", description="Calibrate the pecking key of a box")
-    calibrate_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    calibrate_parser.add_argument("box", help="Which box to run (e.g. 5) ('virtual' for test)", type=str)
     calibrate_parser.set_defaults(func=calibrate_box)
 
     # Shutdown script parser
     shutdown_parser = subparsers.add_parser("shutdown", description="Shutdown a specified box")
-    shutdown_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
+    shutdown_parser.add_argument("box", help="Which box to run (e.g. 5) ('virtual' for test)", type=str)
     shutdown_parser.set_defaults(func=shutdown_box)
 
-
     args = parser.parse_args()
+
     args.func(args)

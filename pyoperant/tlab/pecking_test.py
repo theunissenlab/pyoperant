@@ -304,7 +304,7 @@ def run_pecking_test(args):
         raise ValueError("Currently only .yaml and .json configuration files are allowed")
 
     # The panel is specified by args.box
-    parameters["panel"] = getattr(local_tlab, "Box%d" % args.box)()
+    # parameters["panel"] = getattr(local_tlab, "Box%d" % args.box)()
 
     # Modify the bird name
     if args.bird is not None:
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     from pyoperant.tlab import local_tlab
 
     run_parser = argparse.ArgumentParser("run", description="Run a pecking test experiment")
-    run_parser.add_argument("box", help="Which box to run (e.g. 5)")
+    run_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
     run_parser.add_argument("-c", "--config",
                             dest="config",
                             help="Path to a config file. Default /home/fet/Dropbox/configs/Box#.yaml")
@@ -362,6 +362,11 @@ if __name__ == "__main__":
     run_parser.add_argument("-e", "--experimenter",
                             dest="experimenter",
                             help="Name of the experimenter. Default specified in config file")
+    run_parser.add_argument("-p", "--preference",
+                            dest="preference",
+                            help="Run preference test or no",
+                            default=False,
+                            action="store_true")
     # run_parser.add_argument("-s", "--stimdir",
     #                         dest="stimdir",
     #                         help="Stimulus directory. Default specified in config file")

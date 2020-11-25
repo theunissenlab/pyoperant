@@ -3,6 +3,9 @@ import time
 import datetime
 import serial
 import logging
+import random
+from unittest import mock
+
 from pyoperant.interfaces import base_
 from pyoperant import utils, InterfaceError
 from pyoperant.events import events
@@ -239,6 +242,31 @@ class ArduinoInterface(base_.BaseInterface):
         """
 
         return "".join([chr(channel), chr(value)])
+
+
+class MockArduinoInterface(ArduinoInterface):
+    def __init__(self, device_name, baud_rate=19200, *args, **kwargs):
+        super().__init__(device_name, baud_rate, *args, **kwargs)
+
+    def open(self):
+        with mock.patch("serial.Serial"):
+            return super().open()
+
+    def _read_bool(self, *args, **kwargs):
+        """Patched version of reading bool for pyaudio device
+        """
+        # Would it be better to patch the read functions of the Button component?
+        def _fake_read(*args, **kwargs):
+            # Send 1 values (button off) but occasionally send 0 to simulate pecks
+            # I am well aware that this is applied to all arduino components including
+            # the "feeder" but it hasn't mattered yet.
+            return chr(int(random.random() > 0.00002))
+
+        with (
+                mock.patch.object(self.device, "inWaiting", return_value=5),
+                mock.patch.object(self.device, "read", _fake_read)
+                ):
+            return super()._read_bool(*args, **kwargs)
 
 
 class ArduinoException(InterfaceError):
