@@ -590,6 +590,10 @@ class Speaker(BaseComponent):
         self.event["action"] = "stop"
         return self.output.stop(event=self.event)
 
+    def let_finish(self):
+        while self.output.interface.play_thread.is_alive():
+            utils.wait(0.01)
+
 
 class Microphone(BaseComponent):
     """ Class which holds information about a microphone

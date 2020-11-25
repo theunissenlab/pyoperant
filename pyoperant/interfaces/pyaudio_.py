@@ -5,6 +5,7 @@ import logging
 import threading
 import numpy as np
 import scipy.io.wavfile
+import time
 
 import pyaudio
 import wave
@@ -152,12 +153,14 @@ class PyAudioInterface(base_.AudioInterface):
 
         data = wf.readframes(chunk)
 
-        while not data == "":
+        last_time = time.time()
+        dts = []
+        while data != b"":
             if quit_signal.is_set() or abort_signal.is_set():
                 logger.debug("Attempting to close pyaudio stream on interrupt")
                 stream.close()
                 self._playback_lock.release()
-                logger.info("Stream closed")
+                logger.debug("Stream closed")
                 break
 
             dtype, max_val = self._get_dtype(wf)
@@ -169,13 +172,22 @@ class PyAudioInterface(base_.AudioInterface):
             data = data.astype(dtype).tostring()
             stream.write(data)
             data = wf.readframes(chunk)
+            dts.append(time.time() - last_time)
+            last_time = time.time()
         else:  # This block is run when the while condition becomes False (not on break)
-            logger.info("Attempting to close pyaudio stream on file complete")
-            # Extra wait at the end to make sure the whole file is played through. Don't want to hold the lock for too long though.
+            logger.debug("Attempting to close pyaudio stream on file complete")
+            # Extra wait at the end to make sure the whole file is played through.
+            # Don't want to hold the lock for too long though.
             utils.wait(0.1)
             stream.close()
             self._playback_lock.release()
-            logger.info("Stream closed")
+            logger.debug("Stream closed")
+
+        logger.debug("mean={:.6f} median={:.6f} max={:.6f}".format(
+            np.mean(dts),
+            np.median(dts),
+            np.max(dts)
+        ))
 
         try:
             wf.close()
@@ -293,7 +305,7 @@ class PyAudioInterface(base_.AudioInterface):
         # We msut wait for the previous stream to be closed
         self._playback_lock.acquire()
 
-        logger.info("Queueing wavfile %s" % wav_file)
+        logger.debug("Queueing wavfile %s" % wav_file)
         self.wf = wave.open(wav_file)
         self.validate()
         self._playback_quit_signal = self._get_stream(

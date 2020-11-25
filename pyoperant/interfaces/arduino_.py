@@ -199,7 +199,7 @@ class ArduinoInterface(base_.BaseInterface):
             except TypeError:
                 ArduinoException("Could not read from arduino device")
 
-        logger.debug("Read value of %d from channel %d on %s" % (v, channel, self))
+        # logger.debug("Read value of %d from channel %d on %s" % (v, channel, self))
         if v in [0, 1]:
             if invert:
                 v = 1 - v

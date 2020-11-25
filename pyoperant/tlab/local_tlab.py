@@ -230,8 +230,7 @@ class Panel125(panels.BasePanel):
             self.speaker.play()
 
             try:
-                while self.speaker.output.interface.stream.is_active():
-                    utils.wait(0.1)
+                self.speaker.let_finish()
             except KeyboardInterrupt:
                 return
             finally:

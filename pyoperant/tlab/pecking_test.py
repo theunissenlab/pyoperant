@@ -2,6 +2,7 @@
 import os
 import logging
 import datetime as dt
+import time
 
 import numpy as np
 
@@ -210,7 +211,8 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
         if np.any([self.record_audio.values()]):
             if not hasattr(self.panel, "mic"):
-                raise ValueError("Cannot record audio if panel has no mic.")
+                logger.error("Cannot record audio if panel has no mic.")
+                self.end()
 
     def get_seconds_from_last_reset(self):
         return (dt.datetime.now() - self.last_playback_reset).total_seconds()
@@ -265,6 +267,9 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         else:
             self.this_trial.rt = np.nan
             utils.wait(self.this_trial.stimulus.duration)
+            _start = time.time()
+            self.panel.speaker.let_finish()
+            logger.debug("pecking_test.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
             self.panel.speaker.stop()
 
 
