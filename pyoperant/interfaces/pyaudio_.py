@@ -84,18 +84,15 @@ class PyAudioInterface(base_.AudioInterface):
         super(PyAudioInterface, self).__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
-        self.stream = None
         self.wf = None
         self.rate = input_rate
         self.callback = None
-        self._playing_wav = threading.Event()
-        self._recording = threading.Event()
-        self.rec_queue = None
         self.abort_signal = threading.Event()
         self.open()
         self.gain = None
         self.play_thread = None
         self._playback_quit_signal = None
+        self._playback_lock = threading.Lock()
 
     def set_gain(self, gain):
         self.gain = gain
@@ -120,10 +117,6 @@ class PyAudioInterface(base_.AudioInterface):
         self.abort_signal.set()
         self.abort_signal = threading.Event()
 
-        try:
-            self.stream.close()
-        except AttributeError:
-            self.stream = None
         try:
             self.wf.close()
         except AttributeError:
@@ -163,7 +156,8 @@ class PyAudioInterface(base_.AudioInterface):
             if quit_signal.is_set() or abort_signal.is_set():
                 logger.debug("Attempting to close pyaudio stream on interrupt")
                 stream.close()
-                logger.debug("Stream closed")
+                self._playback_lock.release()
+                logger.info("Stream closed")
                 break
 
             dtype, max_val = self._get_dtype(wf)
@@ -175,12 +169,13 @@ class PyAudioInterface(base_.AudioInterface):
             data = data.astype(dtype).tostring()
             stream.write(data)
             data = wf.readframes(chunk)
-        else:
-            logger.debug("Attempting to close pyaudio stream on file complete")
-            # Extra wait at the end to make sure the whole file is played
-            utils.wait(0.4)
+        else:  # This block is run when the while condition becomes False (not on break)
+            logger.info("Attempting to close pyaudio stream on file complete")
+            # Extra wait at the end to make sure the whole file is played through. Don't want to hold the lock for too long though.
+            utils.wait(0.1)
             stream.close()
-            logger.debug("Stream closed")
+            self._playback_lock.release()
+            logger.info("Stream closed")
 
         try:
             wf.close()
@@ -295,7 +290,10 @@ class PyAudioInterface(base_.AudioInterface):
         if self._playback_quit_signal:
             self._playback_quit_signal.set()
 
-        logger.debug("Queueing wavfile %s" % wav_file)
+        # We msut wait for the previous stream to be closed
+        self._playback_lock.acquire()
+
+        logger.info("Queueing wavfile %s" % wav_file)
         self.wf = wave.open(wav_file)
         self.validate()
         self._playback_quit_signal = self._get_stream(
