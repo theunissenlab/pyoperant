@@ -250,33 +250,53 @@ class Panel125(panels.BasePanel):
 class Box5(Panel125):
 
     def __init__(self, *args, **kwargs):
-        super(Box5, self).__init__(name="Box 5",
-                                   arduino="/dev/ttyArduino_box5",
-                                   speaker="speaker0", *args, **kwargs)
+        defaults = dict(
+            name="Box 5",
+            arduino="/dev/ttyArduino_box5",
+            speaker="speaker5",
+            mic="mic5",
+        )
+        defaults.update(**kwargs)
+        super(Box5, self).__init__(*args, **defaults)
 
 
 class Box6(Panel125):
 
     def __init__(self, *args, **kwargs):
-        super(Box6, self).__init__(name="Box 6",
-                                   arduino="/dev/ttyArduino_box6",
-                                   speaker="speaker1", *args, **kwargs)
+        defaults = dict(
+            name="Box 6",
+            arduino="/dev/ttyArduino_box6",
+            speaker="speaker6",
+            mic="mic6",
+        )
+        defaults.update(**kwargs)
+        super(Box6, self).__init__(*args, **defaults)
 
 
 class Box2(Panel125):
 
     def __init__(self, *args, **kwargs):
-        super(Box2, self).__init__(name="Box 2",
-                                   arduino="/dev/ttyArduino_box2",
-                                   speaker="speaker1", *args, **kwargs)
+        defaults = dict(
+            name="Box 2",
+            arduino="/dev/ttyArduino_box2",
+            speaker="speaker2",
+            mic="mic2",
+        )
+        defaults.update(**kwargs)
+        super(Box2, self).__init__(*args, **defaults)
 
 
 class Box3(Panel125):
 
     def __init__(self, *args, **kwargs):
-        super(Box3, self).__init__(name="Box 3",
-                                   arduino="/dev/ttyArduino_box3",
-                                   speaker="speaker0", *args, **kwargs)
+        defaults = dict(
+            name="Box 3",
+            arduino="/dev/ttyArduino_box3",
+            speaker="speaker3",
+            mic="mic3",
+        )
+        defaults.update(**kwargs)
+        super(Box3, self).__init__(*args, **defaults)
 
 
 class BoxVirtual(Panel125):
@@ -297,7 +317,6 @@ class BoxVirtual(Panel125):
             *args,
             **defaults
         )
-
 
 
 class Thing13(Panel125):

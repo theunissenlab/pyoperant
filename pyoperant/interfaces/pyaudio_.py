@@ -90,12 +90,12 @@ class PyAudioInterface(base_.AudioInterface):
     https://www.assembla.com/spaces/portaudio/wiki/Tips_Callbacks
 
     """
-    def __init__(self, device_name="default", input_rate=44100, *args, **kwargs):
+    def __init__(self, device_name="default", *args, **kwargs):
         super().__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
         self.wf = None
-        self.rate = input_rate
+        self.rate = None
         self.callback = None
         self.abort_signal = threading.Event()
         self.open()
@@ -121,6 +121,7 @@ class PyAudioInterface(base_.AudioInterface):
             raise InterfaceError('could not find pyaudio device %s' % (self.device_name))
 
         self.device_info = self.pa.get_device_info_by_index(self.device_index)
+        self.rate = int(self.device_info["defaultSampleRate"])
 
     def close(self):
         if not sys.is_finalizing():
@@ -256,7 +257,9 @@ class PyAudioInterface(base_.AudioInterface):
             thread-safe signal that will end the recording when the event is set
         """
         chunk = 1024
-        stream = self.pa.open(format=pyaudio.paInt16,
+
+        logger.debug("Recording audio")
+        stream = self.pa.open(format=pyaudio.paInt32,
             channels=1,
             rate=self.rate,
             input=True,
@@ -268,7 +271,7 @@ class PyAudioInterface(base_.AudioInterface):
         if quit_signal is not None:
             while not quit_signal.is_set() and not abort_signal.is_set():
                 data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
+                data = np.frombuffer(data, dtype=np.int32)
                 frames.append(data)
 
         if duration is not None:
@@ -276,7 +279,7 @@ class PyAudioInterface(base_.AudioInterface):
                 if abort_signal.is_set():
                     break
                 data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
+                data = np.frombuffer(data, dtype=np.int32)
                 frames.append(data)
 
         stream.close()
@@ -287,6 +290,7 @@ class PyAudioInterface(base_.AudioInterface):
 
         if not os.path.exists(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
+        logger.debug("Finished recording, writing to {}".format(dest))
 
         scipy.io.wavfile.write(
             dest,
