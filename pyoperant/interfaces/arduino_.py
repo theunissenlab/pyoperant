@@ -241,7 +241,7 @@ class ArduinoInterface(base_.BaseInterface):
         :return: 2-byte hex string for input to arduino
         """
 
-        return "".join([chr(channel), chr(value)])
+        return "".join([chr(channel), chr(value)]).encode()
 
 
 class MockArduinoInterface(ArduinoInterface):
