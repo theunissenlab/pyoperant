@@ -2,9 +2,11 @@ from ctypes import *
 from contextlib import contextmanager
 import os
 import logging
+import sys
 import threading
 import numpy as np
 import scipy.io.wavfile
+import time
 
 import pyaudio
 import wave
@@ -15,6 +17,14 @@ from pyoperant.events import events
 
 logger = logging.getLogger(__name__)
 # TODO: Clean up _stop_wav logging changes
+
+
+def list_audio_devices():
+    pa = pyaudio.PyAudio()
+    return [
+        pa.get_device_info_by_index(index)['name']
+        for index in range(pa.get_device_count())
+    ]
 
 
 # Modify the alsa error function to suppress needless warnings
@@ -80,22 +90,19 @@ class PyAudioInterface(base_.AudioInterface):
     https://www.assembla.com/spaces/portaudio/wiki/Tips_Callbacks
 
     """
-    def __init__(self, device_name="default", input_rate=44100, *args, **kwargs):
-        super(PyAudioInterface, self).__init__(*args,**kwargs)
+    def __init__(self, device_name="default", *args, **kwargs):
+        super().__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
-        self.stream = None
         self.wf = None
-        self.rate = input_rate
+        self.rate = None
         self.callback = None
-        self._playing_wav = threading.Event()
-        self._recording = threading.Event()
-        self.rec_queue = None
         self.abort_signal = threading.Event()
         self.open()
         self.gain = None
         self.play_thread = None
         self._playback_quit_signal = None
+        self._playback_lock = threading.Lock()
 
     def set_gain(self, gain):
         self.gain = gain
@@ -114,16 +121,15 @@ class PyAudioInterface(base_.AudioInterface):
             raise InterfaceError('could not find pyaudio device %s' % (self.device_name))
 
         self.device_info = self.pa.get_device_info_by_index(self.device_index)
+        self.rate = int(self.device_info["defaultSampleRate"])
 
     def close(self):
-        logger.debug("Closing device")
+        if not sys.is_finalizing():
+            logger.debug("Closing device")
+
         self.abort_signal.set()
         self.abort_signal = threading.Event()
 
-        try:
-            self.stream.close()
-        except AttributeError:
-            self.stream = None
         try:
             self.wf.close()
         except AttributeError:
@@ -146,21 +152,28 @@ class PyAudioInterface(base_.AudioInterface):
         """
         chunk = 1024
 
-        stream = self.pa.open(
-           format=self.pa.get_format_from_width(wf.getsampwidth()),
-           channels=wf.getnchannels(),
-           rate=wf.getframerate(),
-           output=True,
-           frames_per_buffer=chunk,
-           output_device_index=self.device_index,
-        )
+        try:
+            stream = self.pa.open(
+               format=self.pa.get_format_from_width(wf.getsampwidth()),
+               channels=wf.getnchannels(),
+               rate=wf.getframerate(),
+               output=True,
+               frames_per_buffer=chunk,
+               output_device_index=self.device_index,
+            )
+        except IOError:
+            logging.error("IOError on opening pa stream. Not sure why")
+            raise
 
         data = wf.readframes(chunk)
 
-        while not data == "":
+        last_time = time.time()
+        dts = []
+        while data != b"":
             if quit_signal.is_set() or abort_signal.is_set():
                 logger.debug("Attempting to close pyaudio stream on interrupt")
                 stream.close()
+                self._playback_lock.release()
                 logger.debug("Stream closed")
                 break
 
@@ -173,12 +186,22 @@ class PyAudioInterface(base_.AudioInterface):
             data = data.astype(dtype).tostring()
             stream.write(data)
             data = wf.readframes(chunk)
-        else:
+            dts.append(time.time() - last_time)
+            last_time = time.time()
+        else:  # This block is run when the while condition becomes False (not on break)
             logger.debug("Attempting to close pyaudio stream on file complete")
-            # Extra wait at the end to make sure the whole file is played
-            utils.wait(0.4)
+            # Extra wait at the end to make sure the whole file is played through.
+            # Don't want to hold the lock for too long though.
+            utils.wait(0.1)
             stream.close()
+            self._playback_lock.release()
             logger.debug("Stream closed")
+
+        logger.debug("mean={:.6f} median={:.6f} max={:.6f}".format(
+            np.mean(dts),
+            np.median(dts),
+            np.max(dts)
+        ))
 
         try:
             wf.close()
@@ -231,7 +254,9 @@ class PyAudioInterface(base_.AudioInterface):
             thread-safe signal that will end the recording when the event is set
         """
         chunk = 1024
-        stream = self.pa.open(format=pyaudio.paInt16,
+
+        logger.debug("Recording audio")
+        stream = self.pa.open(format=pyaudio.paInt32,
             channels=1,
             rate=self.rate,
             input=True,
@@ -243,7 +268,7 @@ class PyAudioInterface(base_.AudioInterface):
         if quit_signal is not None:
             while not quit_signal.is_set() and not abort_signal.is_set():
                 data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
+                data = np.frombuffer(data, dtype=np.int32)
                 frames.append(data)
 
         if duration is not None:
@@ -251,7 +276,7 @@ class PyAudioInterface(base_.AudioInterface):
                 if abort_signal.is_set():
                     break
                 data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
+                data = np.frombuffer(data, dtype=np.int32)
                 frames.append(data)
 
         stream.close()
@@ -262,6 +287,7 @@ class PyAudioInterface(base_.AudioInterface):
 
         if not os.path.exists(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
+        logger.debug("Finished recording, writing to {}".format(dest))
 
         scipy.io.wavfile.write(
             dest,
@@ -292,6 +318,9 @@ class PyAudioInterface(base_.AudioInterface):
         if self._playback_quit_signal:
             self._playback_quit_signal.set()
 
+        # We msut wait for the previous stream to be closed
+        self._playback_lock.acquire()
+
         logger.debug("Queueing wavfile %s" % wav_file)
         self.wf = wave.open(wav_file)
         self.validate()
@@ -313,11 +342,25 @@ class PyAudioInterface(base_.AudioInterface):
         self._playback_quit_signal.set()
         self.play_thread = None
 
+
+from unittest import mock
+
+class MockPyAudioInterface(PyAudioInterface):
+    pass
+    # def open(self):
+        # """Don't actually locate an audio device"""
+        # self.pa = pyaudio.PyAudio()
+        # Get the default audio device here instead...
+        # with mock.patch("pyaudio.PyAudio.get_device_info_by_index", return_value={"name": self.device_name}):
+            # return super().open()
+
+    
+
 if __name__ == "__main__":
 
     with log_alsa_warnings():
         pa = pyaudio.PyAudio()
     pa.terminate()
-    print "-" * 40
+    print("-" * 40)
     pa = pyaudio.PyAudio()
     pa.terminate()

@@ -6,6 +6,7 @@ import csv
 import datetime as dt
 import random
 import numpy as np
+import time
 from pyoperant.behavior import base
 from pyoperant.errors import EndSession
 from pyoperant import states, trials, blocks
@@ -139,11 +140,21 @@ class GoNoGoInterrupt(base.BaseExp):
 
     def response_main(self):
         """ Poll for an interruption for the duration of the stimulus. """
-
+        # Would be better to just pol till stimulus is actually done
         self.this_trial.response_time = self.panel.response_port.poll(self.this_trial.stimulus.duration)
         logger.debug("Received peck or timeout. Stopping playback")
 
-        self.panel.speaker.stop()
+        # Its janky, but allow the stimulus to finish...
+        # it does suppress pecks in this cleanup period.
+        # Thats why it would be better to link the polling period
+        # with the playback completion itself
+        if not self.this_trial.response_time:
+            _start = time.time()
+            self.panel.speaker.let_finish()
+            logger.debug("go_no_go_interrupt.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
+        else:
+            self.panel.speaker.stop()
+
         logger.debug("Playback stopped")
 
         if self.this_trial.response_time is None:

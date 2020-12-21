@@ -2,6 +2,7 @@
 import os
 import logging
 import datetime as dt
+import time
 
 import numpy as np
 
@@ -206,11 +207,12 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         self.inactivity_before_playback_restart = inactivity_before_playback_restart
         self.last_playback_reset = dt.datetime.now()
 
-        super(PeckingAndPlaybackTest, self).__init__(*args, block_queue=block_queue, **kwargs)
+        super().__init__(*args, block_queue=block_queue, **kwargs)
 
         if np.any([self.record_audio.values()]):
             if not hasattr(self.panel, "mic"):
-                raise ValueError("Cannot record audio if panel has no mic.")
+                logger.error("Cannot record audio if panel has no mic.")
+                self.end()
 
     def get_seconds_from_last_reset(self):
         return (dt.datetime.now() - self.last_playback_reset).total_seconds()
@@ -265,6 +267,9 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         else:
             self.this_trial.rt = np.nan
             utils.wait(self.this_trial.stimulus.duration)
+            _start = time.time()
+            self.panel.speaker.let_finish()
+            logger.debug("pecking_test.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
             self.panel.speaker.stop()
 
 
@@ -273,7 +278,7 @@ def run_pecking_test(args):
     Start a new pecking test and run it using the modifications provided by args.
     """
 
-    print "Called run_pecking_test"
+    print("Called run_pecking_test")
     box_name = "Box%d" % args.box
     config_dir = os.path.expanduser(os.path.join("~", "configs"))
 
@@ -299,7 +304,7 @@ def run_pecking_test(args):
         raise ValueError("Currently only .yaml and .json configuration files are allowed")
 
     # The panel is specified by args.box
-    parameters["panel"] = getattr(local_tlab, "Box%d" % args.box)()
+    # parameters["panel"] = getattr(local_tlab, "Box%d" % args.box)()
 
     # Modify the bird name
     if args.bird is not None:
@@ -347,7 +352,7 @@ if __name__ == "__main__":
     from pyoperant.tlab import local_tlab
 
     run_parser = argparse.ArgumentParser("run", description="Run a pecking test experiment")
-    run_parser.add_argument("box", help="Which box to run (e.g. 5)")
+    run_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
     run_parser.add_argument("-c", "--config",
                             dest="config",
                             help="Path to a config file. Default /home/fet/Dropbox/configs/Box#.yaml")
@@ -357,6 +362,11 @@ if __name__ == "__main__":
     run_parser.add_argument("-e", "--experimenter",
                             dest="experimenter",
                             help="Name of the experimenter. Default specified in config file")
+    run_parser.add_argument("-p", "--preference",
+                            dest="preference",
+                            help="Run preference test or no",
+                            default=False,
+                            action="store_true")
     # run_parser.add_argument("-s", "--stimdir",
     #                         dest="stimdir",
     #                         help="Stimulus directory. Default specified in config file")

@@ -163,7 +163,7 @@ class StimulusCondition(object):
         else:
             self.files = self.files
 
-        self._index_list = range(len(self.files))
+        self._index_list = list(range(len(self.files)))
         if self.shuffle:
             random.shuffle(self._index_list)
 
@@ -175,7 +175,7 @@ class StimulusCondition(object):
         """
 
         if len(self._index_list) == 0:
-            self._index_list = range(len(self.files))
+            self._index_list = list(range(len(self.files)))
             if self.shuffle:
                 random.shuffle(self._index_list)
 

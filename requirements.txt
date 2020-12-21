@@ -1,8 +1,8 @@
-ipython==5.8.0
+ipython>=5.8.0
 nidaqmx==0.5.7
-numpy==1.16.1
+numpy>=1.16.1
 PyAudio==0.2.11
 PyYAML==3.13
 pyephem==3.7.6.0
 pyserial==3.4
-scipy==1.2.1
+scipy>=1.2.1

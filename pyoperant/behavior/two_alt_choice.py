@@ -113,7 +113,7 @@ class TwoAltChoiceExp(base.BaseExp):
         This creates a new csv file at experiment.data_csv and writes a header row 
         with the fields in experiment.fields_to_save
         """
-        with open(self.data_csv, 'wb') as data_fh:
+        with open(self.data_csv, 'w') as data_fh:
             trialWriter = csv.writer(data_fh)
             trialWriter.writerow(self.fields_to_save)
 
@@ -243,11 +243,11 @@ class TwoAltChoiceExp(base.BaseExp):
                                 index=index,
                                 class_=self.trials[-1].class_)
             for ev in self.trials[-1].events:
-                if ev.label is 'wav':
+                if ev.label == 'wav':
                     trial.events.append(copy.copy(ev))
                     trial.stimulus_event = trial.events[-1]
                     trial.stimulus = trial.stimulus_event.name
-                elif ev.label is 'motif':
+                elif ev.label == 'motif':
                     trial.events.append(copy.copy(ev))
             self.log.debug("correction trial: class is %s" % trial.class_)
         else:
@@ -303,7 +303,7 @@ class TwoAltChoiceExp(base.BaseExp):
             except AttributeError:
                 trial_dict[field] = trial.annotations[field]
 
-        with open(self.data_csv,'ab') as data_fh:
+        with open(self.data_csv,'a') as data_fh:
             trialWriter = csv.DictWriter(data_fh,fieldnames=self.fields_to_save,extrasaction='ignore')
             trialWriter.writerow(trial_dict)
 

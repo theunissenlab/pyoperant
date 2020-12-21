@@ -5,6 +5,26 @@ Pyoperant is a framework to easily construct and share new operant behavior para
 
 With PyOperant, you can write a single behavior script that works across different species, different computers, different hardware, different rewards, different modalities.
 
+Installation
+------------
+To get set up, install python and python header files and portaudio (which is necsessary for PyAudio)
+
+```shell
+sudo apt install python python-dev portaudio19-dev
+```
+
+When installing portaudio there was a prompt to allow realtime priority to jackd. I don't know what this means but I said yes.
+
+Running a Virtual Pecking Test Box (Theunissen lab)
+---------------------------------------------------
+
+Use `pyoperant/tlab/pecking_and_playback_test.yaml` or `pyoperant/tlab/pecking_test.yaml` as a template; copy the file to a folder. Currently the main script in `pyoperant/tlab/pecking_test.py` is configured to look in the path `~/configs/` for files named `Box*.yaml` (e.g. if you run `python -m pyoperant.tlab.pecking_test test 1` it will read the yaml at `~/configs/Box1.yaml`.
+
+Fill in the paths to `stim_directory` and `experiment_path`, make sure `panel` is set to `!python/object/apply:pyoperant.tlab.local_tlab.BoxVirtual {}` and add stimulus wav files in the folders `{stim_directory}/reward`, `{stim_directory}/nonreward`, and `{stim_directory}/preference` if testing preference tests too.
+
+
+***
+
 Operant logic is easy
 ---------------------
 
