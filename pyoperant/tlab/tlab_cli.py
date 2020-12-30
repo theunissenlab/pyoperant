@@ -4,6 +4,7 @@
 import os
 import glob
 import sys
+import tempfile
 import traceback
 import warnings
 import webbrowser
@@ -67,8 +68,23 @@ def cli():
 @click.option("--repeat/--no-repeat", default=False, help="loop audio playback")
 def test_audio(box, file_, repeat):
     from pyoperant.tlab.tlab_commands import test_audio
+
     click.echo("Testing audio on box {} with {}".format(box, file_))
     test_audio(box, file_, repeat)
+
+
+@click.command(help="Test box's microphone recording")
+@add_options(box_required)
+@click.option("-d", "--duration", type=float, help="time to record for")
+@click.option("--playback/--no-playback", default=True, help="play audio from speakers")
+def test_microphone(box, duration, playback):
+    from pyoperant.tlab.tlab_commands import test_microphone
+
+    click.echo("Testing microphone on box {}".format(box))
+    with tempfile.TemporaryDirectory() as tempdir:
+        dest = os.path.join(tempdir, "box{}_mic_test.wav".format(box))
+        click.echo("...saving output to {}".format(dest))
+        test_microphone(box, play_audio=playback, duration=duration, dest=dest)
 
 
 @click.command(help="Test box button, light, and feeder operation")
@@ -92,6 +108,7 @@ def calibrate_key(box):
 def read_config(box):
     from pyoperant.tlab.tlab_commands import get_config
     get_config(box)
+
 
 @click.command(help="Opens config files in Atom for editing")
 @click.option("-b", "--box", help="box to edit config for", default="")
@@ -275,15 +292,24 @@ def diagnostics(box, file_, raise_):
         diagnose_config(num)
 
     click.echo()
+
     if click.confirm("Configuration check complete. Proceed to interactive box components tests?"):
         # Flash lights
         for failed_box in boxes_failed:
             click.echo("Skipping {} (failed to instantiate)".format(failed_box.__name__))
 
-        for box in boxes_succeeded:
+        with tempfile.TemporaryDirectory() as tempdir:
+            for box in boxes_succeeded:
+                click.echo()
+                click.echo("Testing box {}".format(box))
+                box.test(filename=file_)
+
+                mic_dest = os.path.join(tempdir, "{}_mic_test.wav".format(type(box).__name__))
+                click.echo("Testing microphone on box {}".format(box))
+                output = box.test_mic_recording(play_audio=True, duration=0.0, dest=mic_dest)
+
             click.echo()
-            click.echo("Testing box {}".format(box))
-            box.test(filename=file_)
+            click.prompt("Microphone tests complete. Check or copy wav files in {} before proceeding (y to proceed)".format(tempdir))
 
         for box in boxes_succeeded:
             click.echo("Checking poll rate of box {}".format(box))
@@ -379,6 +405,7 @@ cli.add_command(diagnostics)
 cli.add_command(calibrate_key)
 cli.add_command(run)
 cli.add_command(test_audio)
+cli.add_command(test_microphone)
 cli.add_command(read_config)
 cli.add_command(edit_config)
 

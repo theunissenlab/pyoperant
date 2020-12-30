@@ -39,6 +39,13 @@ def test_box(box, file_=None):
     box.test(filename=file_)
 
 
+def test_microphone(box, file_=None, play_audio=True, duration=1.0, dest=None):
+    from pyoperant.tlab.local_tlab import PANELS
+    Box = PANELS.get(box)
+    box = Box()
+    box.test_mic_recording(play_audio=play_audio, duration=duration, dest=dest)
+
+
 def test_audio(box, file_=None, repeat=False):
     from pyoperant.tlab.local_tlab import PANELS
     Box = PANELS.get(box)

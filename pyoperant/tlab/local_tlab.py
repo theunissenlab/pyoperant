@@ -2,6 +2,7 @@ import datetime as dt
 import os
 import logging
 import argparse
+import tempfile
 from functools import wraps
 from unittest import mock
 
@@ -194,7 +195,6 @@ class Panel125(panels.BasePanel):
         return rates, mean_rate
 
     def test_audio(self, filename="", repeat=False):
-
         if not filename:
             filename = self._default_sound_file
 
@@ -211,6 +211,38 @@ class Panel125(panels.BasePanel):
 
             if not repeat:
                 break
+
+    def test_mic_recording(self, audio_file="", play_audio=True, duration=1.0, dest=None):
+        """Records audio to a temp file
+
+        if filename is given, also plays audio
+        """
+        if not audio_file:
+            filename = self._default_sound_file
+        else:
+            filename = audio_file
+
+        if not dest:
+            tempdir = tempfile.mkdtemp()
+            dest = os.path.join(tempdir, "test_mic_recording_{}.wav".format(self.__name__))
+
+        key = self.mic.record(duration=0.0, dest=dest)
+
+        if play_audio:
+            self.speaker.queue(filename)
+            self.speaker.play()
+        else:
+            utils.wait(duration)
+
+        try:
+            self.speaker.let_finish()
+        except KeyboardInterrupt:
+            return
+        finally:
+            self.speaker.stop()
+
+        self.mic.stop(key)
+        return dest
 
 
 class Box2(Panel125):

@@ -256,7 +256,7 @@ class PyAudioInterface(base_.AudioInterface):
         chunk = 1024
 
         logger.debug("Recording audio")
-        stream = self.pa.open(format=pyaudio.paInt32,
+        stream = self.pa.open(format=pyaudio.paInt16,
             channels=1,
             rate=self.rate,
             input=True,
@@ -268,7 +268,7 @@ class PyAudioInterface(base_.AudioInterface):
         if quit_signal is not None:
             while not quit_signal.is_set() and not abort_signal.is_set():
                 data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int32)
+                data = np.frombuffer(data, dtype=np.int16)
                 frames.append(data)
 
         if duration is not None:
@@ -276,7 +276,7 @@ class PyAudioInterface(base_.AudioInterface):
                 if abort_signal.is_set():
                     break
                 data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int32)
+                data = np.frombuffer(data, dtype=np.int16)
                 frames.append(data)
 
         stream.close()

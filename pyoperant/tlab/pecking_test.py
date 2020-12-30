@@ -245,7 +245,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
                 self.recording_key = self.panel.mic.record(
-                    duration=1.0,
+                    duration=1.0,  # Record for 1 second after quit signal
                     dest=self.get_wavfile_path()
                 )
                 break
