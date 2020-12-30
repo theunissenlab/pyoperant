@@ -1,7 +1,9 @@
+click>=7.1.2
+colorama>=0.4.4
 ipython>=5.8.0
 nidaqmx==0.5.7
 numpy>=1.16.1
-PyAudio==0.2.11
+PyAudio>=0.2.11
 PyYAML==3.13
 pyephem==3.7.6.0
 pyserial==3.4
