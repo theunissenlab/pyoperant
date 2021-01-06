@@ -271,3 +271,9 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
             self.panel.speaker.let_finish()
             logger.debug("pecking_test.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
             self.panel.speaker.stop()
+
+    def end(self):
+        if self.recording_key is not None:
+            self.panel.mic.stop(self.recording_key)
+            self.recording_key = None
+        super(PeckingAndPlaybackTest, self).end()

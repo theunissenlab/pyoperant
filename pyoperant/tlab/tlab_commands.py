@@ -32,21 +32,21 @@ def get_daily_experiment_path(base_experiment_path, subject_name, date):
     return os.path.join(base_experiment_path, subject_name, date.strftime("%d%m%y"))
 
 
-def test_box(box, file_=None):
+def test_box(box, file_):
     from pyoperant.tlab.local_tlab import PANELS
     Box = PANELS.get(box)
     box = Box()
     box.test(filename=file_)
 
 
-def test_microphone(box, file_=None, play_audio=True, duration=1.0, dest=None):
+def test_microphone(box, play_audio=True, duration=1.0, dest=None):
     from pyoperant.tlab.local_tlab import PANELS
     Box = PANELS.get(box)
     box = Box()
     box.test_mic_recording(play_audio=play_audio, duration=duration, dest=dest)
 
 
-def test_audio(box, file_=None, repeat=False):
+def test_audio(box, file_, repeat=False):
     from pyoperant.tlab.local_tlab import PANELS
     Box = PANELS.get(box)
     box = Box()
@@ -74,17 +74,19 @@ def get_config(box):
     pprint.pprint(parameters)
 
 
-def run(
+def prepare_todays_experiment(
         box,
         config,
         subject,
         experimenter,
-        preference_test,
-        output_dir
+        output_dir,
     ):
-    """Loads config, sets up data locations, and runs the pecking test
+    """Prepare folders and symlinks for today's experiment
 
-    For an experiment on DATE,
+    Separated from the run() function so that the directory structure
+    can be set up before the run function is actually called.
+
+    For an experiment on DATE...
 
     1. Creates a folder at output_dir/subject/DATE that
         will contain the csv, logfiles and audio recordings
@@ -93,10 +95,6 @@ def run(
         output_dir/subject/DATE
     """
     from pyoperant.tlab.local_tlab import PANELS
-    from pyoperant.tlab.pecking_test import (
-        PeckingAndPlaybackTest,
-        PeckingTest
-    )
 
     box_name = PANELS[box].__name__
 
@@ -137,6 +135,40 @@ def run(
     if os.path.exists(data_link):
         os.remove(data_link)
     os.symlink(parameters["experiment_path"], data_link)
+
+    return parameters
+
+
+def run(
+        box,
+        config,
+        subject,
+        experimenter,
+        preference_test,
+        output_dir
+    ):
+    """Loads config, sets up data locations, and runs the pecking test
+
+    For an experiment on DATE,
+
+    1. Creates a folder at output_dir/subject/DATE that
+        will contain the csv, logfiles and audio recordings
+        generated during the experiment.
+    2. Creates a symlink from ~/data_Box{BOX} to the folder
+        output_dir/subject/DATE
+    """
+    from pyoperant.tlab.pecking_test import (
+        PeckingAndPlaybackTest,
+        PeckingTest
+    )
+
+    parameters = prepare_todays_experiment(
+        box,
+        config,
+        subject,
+        experimenter,
+        output_dir
+    )
 
     if preference_test:
         exp = PeckingAndPlaybackTest(**parameters)

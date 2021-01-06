@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 # TODO: Clean up _stop_wav logging changes
 
 
-def list_audio_devices():
+def get_audio_devices():
     pa = pyaudio.PyAudio()
-    return [
-        pa.get_device_info_by_index(index)['name']
+    devices = [
+        pa.get_device_info_by_index(index)
         for index in range(pa.get_device_count())
     ]
+    return {info["name"]: info for info in devices}
 
 
 # Modify the alsa error function to suppress needless warnings

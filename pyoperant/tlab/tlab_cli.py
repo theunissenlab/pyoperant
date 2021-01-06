@@ -77,7 +77,7 @@ def test_audio(box, file_, repeat):
 @add_options(box_required)
 @click.option("-d", "--duration", type=float, help="time to record for")
 @click.option("--playback/--no-playback", default=True, help="play audio from speakers")
-def test_microphone(box, duration, playback):
+def test_mic(box, duration, playback):
     from pyoperant.tlab.tlab_commands import test_microphone
 
     click.echo("Testing microphone on box {}".format(box))
@@ -85,6 +85,7 @@ def test_microphone(box, duration, playback):
         dest = os.path.join(tempdir, "box{}_mic_test.wav".format(box))
         click.echo("...saving output to {}".format(dest))
         test_microphone(box, play_audio=playback, duration=duration, dest=dest)
+        click.prompt("Check audio output or type anything to continue")
 
 
 @click.command(help="Test box button, light, and feeder operation")
@@ -99,6 +100,7 @@ def test_box(box, file_):
 @click.command(help="Calibrate pecking key")
 @add_options(box_required)
 def calibrate_key(box):
+    # TODO kevin: not sure what the purpose of this was
     from pyoperant.tlab.tlab_commands import calibrate_box
     calibrate_box(box)
 
@@ -131,6 +133,22 @@ def edit_config(box):
         "atom",
         "-n",
     ] + config_files)
+
+
+@click.command(help="Setup paths (normally don't need to do this, 'run' does it automatically")
+@add_options(box_required)
+@click.option("-c", "--config", type=click.Path(dir_okay=False), help="override default yaml config file")
+@click.option("-s", "--subject", help="override config file subject name")
+@click.option("-e", "--experimenter", help="override config file experimenter name")
+@click.option("--output-dir", help="override data output directory")
+def prepare_paths(box, config, subject, experimenter, output_dir):
+    """Prepare experiment paths. run() does all this automatically.
+
+    This is necessary to be its own command for anything that requires the symlink
+    to be created before the experiment itself is run
+    """
+    from pyoperant.tlab.tlab_commands import prepare_todays_experiment
+    prepare_todays_experiment(box, config, subject, experimenter, output_dir)
 
 
 @click.command(help="Run the pecking test on specific box")
@@ -171,7 +189,9 @@ def shell(box):
         prompt="Select box (leave blank for general diagnostics)", default="")
 @click.option("-f", "--file", "file_", type=click.Path(exists=True, dir_okay=False), help="path to sound file to test")
 @click.option("-r/ ", "--raise/--no-raise", "raise_", default=False, help="raise exception on caught errors")
-def diagnostics(box, file_, raise_):
+@click.option("--configs", is_flag=True, help="skip slower steps")
+@click.option("--full", is_flag=True, help="include even the slower steps")
+def diagnostics(box, file_, raise_, configs, full):
     """Runs diagnostic tests for one or all boxes, including hardware, config, software
     """
     click.echo()
@@ -187,7 +207,7 @@ def diagnostics(box, file_, raise_):
     click.echo("Importing experiment classes...")
     base_imports_failed = False
     try:
-        from pyoperant.interfaces.pyaudio_ import list_audio_devices
+        from pyoperant.interfaces.pyaudio_ import get_audio_devices
         from pyoperant.tlab.pecking_test import PeckingTest, PeckingAndPlaybackTest
     except ImportError:
         CLIResult.fail("to import pyoperant packages")
@@ -249,6 +269,25 @@ def diagnostics(box, file_, raise_):
     else:
         CLIResult.success("found audio input hw:U192k")
 
+    audio_devices = get_audio_devices()
+    click.echo("Found audio devices:")
+    for num in box_nums:
+        mic_name = "mic{}".format(num)
+        speaker_name = "speaker{}".format(num)
+        mic = audio_devices.get(mic_name)
+        if mic:
+            CLIResult.success("Found {}".format(mic_name))
+            click.echo(mic)
+        else:
+            CLIResult.fail("Could not find {}".format(mic_name))
+
+        speaker = audio_devices.get("speaker{}".format(num))
+        if speaker:
+            CLIResult.success("Found {}".format(speaker_name))
+            click.echo(speaker)
+        else:
+            CLIResult.fail("Could not find {}".format(speaker_name))
+
     # chekcing arduinos
     click.echo()
     click.echo("Looking for arduinos in /dev...")
@@ -281,20 +320,19 @@ def diagnostics(box, file_, raise_):
         # TODO: add more help with this?
         # os.system("cat /proc/asound/cards",)
         # audio_devices = pa.get_device_info_by_index(0)
-        # audio_devices = list_audio_devices()
 
     click.echo()
     click.echo("Device check complete")
-    click.echo("Checking configuration files...")
 
-    for num in box_nums:
-        click.echo()
-        diagnose_config(num)
+    if configs or full:
+        click.echo("Checking configuration files...")
+        for num in box_nums:
+            click.echo()
+            diagnose_config(num)
 
     click.echo()
 
-    if click.confirm("Configuration check complete. Proceed to interactive box components tests?"):
-        # Flash lights
+    if click.confirm("Software check complete. Proceed to interactive box components tests?"):
         for failed_box in boxes_failed:
             click.echo("Skipping {} (failed to instantiate)".format(failed_box.__name__))
 
@@ -309,12 +347,14 @@ def diagnostics(box, file_, raise_):
                 output = box.test_mic_recording(play_audio=True, duration=0.0, dest=mic_dest)
 
             click.echo()
-            click.prompt("Microphone tests complete. Check or copy wav files in {} before proceeding (y to proceed)".format(tempdir))
+            click.prompt("Microphone tests complete. Check or copy wav files in {} before proceeding "
+                    "(type anything to proceed)".format(tempdir))
 
-        for box in boxes_succeeded:
-            click.echo("Checking poll rate of box {}".format(box))
-            _, mean_rate = box.check_poll_rate(iters=5, duration=1)
-            click.echo("Polled from peck port at {:.2f}/s".format(mean_rate))
+        if full:
+            for box in boxes_succeeded:
+                click.echo("Checking poll rate of box {}".format(box))
+                _, mean_rate = box.check_poll_rate(iters=5, duration=1)
+                click.echo("Polled from peck port at {:.2f}/s".format(mean_rate))
 
     click.echo("Diagnostics completed")
 
@@ -402,10 +442,11 @@ def diagnose_config(box):
 
 cli.add_command(shell)
 cli.add_command(diagnostics)
-cli.add_command(calibrate_key)
+# cli.add_command(calibrate_key)
 cli.add_command(run)
+cli.add_command(prepare_paths)
 cli.add_command(test_audio)
-cli.add_command(test_microphone)
+cli.add_command(test_mic)
 cli.add_command(read_config)
 cli.add_command(edit_config)
 

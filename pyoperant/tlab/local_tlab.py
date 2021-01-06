@@ -226,22 +226,22 @@ class Panel125(panels.BasePanel):
             tempdir = tempfile.mkdtemp()
             dest = os.path.join(tempdir, "test_mic_recording_{}.wav".format(self.__name__))
 
-        key = self.mic.record(duration=0.0, dest=dest)
-
-        if play_audio:
-            self.speaker.queue(filename)
-            self.speaker.play()
-        else:
-            utils.wait(duration)
-
         try:
+            key = self.mic.record(duration=1.0, dest=dest)
+
+            if play_audio:
+                self.speaker.queue(filename)
+                self.speaker.play()
+            else:
+                utils.wait(duration)
+
             self.speaker.let_finish()
         except KeyboardInterrupt:
-            return
+            return dest
         finally:
             self.speaker.stop()
+            self.mic.stop(key)
 
-        self.mic.stop(key)
         return dest
 
 
@@ -335,7 +335,3 @@ def launch_shell(box=None):
         print("\nInitialized variable box{}".format(_box))
     print()
     embed(colors="neutral")
-
-
-def debug_box_audio(args):
-    audio_devices = pyaudio_.list_audio_devices()
