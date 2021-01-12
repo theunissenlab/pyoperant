@@ -15,6 +15,9 @@ from pyoperant import InterfaceError, utils
 from pyoperant.events import events
 
 
+REC_CHUNK = 1024
+
+
 logger = logging.getLogger(__name__)
 # TODO: Clean up _stop_wav logging changes
 
@@ -78,6 +81,80 @@ def log_alsa_warnings():
         yield
 
 
+class RecordBuffer(object):
+    """Buffers a fixed amount of data
+
+    When maxlen is set to None with set_maxlen(None)
+    the buffer will continue to accumulate indefinitely
+    """
+    def __init__(self, maxlen=None):
+        self.maxlen = maxlen
+        self.start = 0
+        self.length = 0
+        self.data = None
+
+    def __len__(self):
+        return self.length
+
+    def __array__(self):
+        if self.data is None:
+            return np.array([])
+        else:
+            return self.data[-self.length:]
+
+    def clear(self):
+        self.data = None
+        self.length = 0
+
+    def set_maxlen(self, maxlen=None):
+        """Set maxlen and adjust data array size"""
+        self.maxlen = maxlen
+
+        if self.data is not None and len(self.data) == self.maxlen:
+            return
+
+        if self.maxlen is not None:
+            if len(self.data) > self.maxlen:
+                self.data = self.data[-self.maxlen:]
+                self.length = min(self.length, self.maxlen)
+            else:
+                extended_data = np.zeros((self.maxlen, self.data.shape[1]))
+                extended_data[-len(self.data):] = self.data
+                self.length = len(self.data)
+                self.data = extended_data
+        elif self.data is not None:
+            self.data = self.data[-self.length:]
+
+    def extend(self, data):
+        to_add = np.array(data)
+        if to_add.ndim == 1:
+            to_add = to_add[:, None]
+
+        if self.data is None:
+            if self.maxlen is not None:
+                self.data = np.zeros((self.maxlen, to_add.shape[1]))
+                self.length = 0
+            else:
+                self.data = np.zeros((0, to_add.shape[1]))
+                self.length = 0
+
+        # Validate that the dimensions are correct
+        if self.data.shape[1] != to_add.shape[1]:
+            raise ValueError("Cannot extend array with incompatible shape")
+
+        if self.maxlen is not None:
+            if len(data) >= self.maxlen:
+                self.data[:] = to_add[:-self.maxlen:]
+                self.length = len(self.data)
+            else:
+                self.data = np.roll(self.data, -len(to_add))
+                self.data[-len(to_add):] = to_add
+                self.length = min(self.maxlen, self.length + len(to_add))
+        else:
+            self.data = np.concatenate([self.data, to_add])
+            self.length = len(self.data)
+
+
 class PyAudioInterface(base_.AudioInterface):
     """Class which holds information about an audio device
 
@@ -91,7 +168,7 @@ class PyAudioInterface(base_.AudioInterface):
     https://www.assembla.com/spaces/portaudio/wiki/Tips_Callbacks
 
     """
-    def __init__(self, device_name="default", *args, **kwargs):
+    def __init__(self, device_name="default", is_mic=False, *args, **kwargs):
         super().__init__(*args,**kwargs)
         self.device_name = device_name
         self.device_index = None
@@ -104,6 +181,11 @@ class PyAudioInterface(base_.AudioInterface):
         self.play_thread = None
         self._playback_quit_signal = None
         self._playback_lock = threading.Lock()
+
+        if is_mic:
+            self.rec_stream = None
+            self._record_buffer = RecordBuffer(maxlen=2048)
+            self.listen()
 
     def set_gain(self, gain):
         self.gain = gain
@@ -130,6 +212,11 @@ class PyAudioInterface(base_.AudioInterface):
 
         self.abort_signal.set()
         self.abort_signal = threading.Event()
+
+        try:
+            self.rec_stream.close()
+        except:
+            pass
 
         try:
             self.wf.close()
@@ -238,6 +325,24 @@ class PyAudioInterface(base_.AudioInterface):
 
         return new_quit_signal
 
+    def rec_callback(self, in_data, frame_count, time_info, status):
+        data = np.frombuffer(in_data, dtype=np.int16)
+        self._record_buffer.extend(data)
+        return in_data, pyaudio.paContinue
+
+    def listen(self):
+        """Start microphone recording stream
+        """
+        self.rec_stream = self.pa.open(format=pyaudio.paInt16,
+            channels=1,
+            rate=self.rate,
+            input_device_index=self.device_index,
+            input=True,
+            output=False,
+            frames_per_buffer=REC_CHUNK,
+            stream_callback=self.rec_callback
+        )
+
     def _run_record(self, duration=None, dest=None, quit_signal=None, abort_signal=None):
         """Record audio from pyaudio stream for a fixed duration or until a quit signal
 
@@ -254,37 +359,18 @@ class PyAudioInterface(base_.AudioInterface):
         abort_signal : threading.Event
             thread-safe signal that will end the recording when the event is set
         """
-        chunk = 1024
+        self._record_buffer.set_maxlen(None)
+        _recording_started_at = self._record_buffer.length
 
-        logger.debug("Recording audio")
-        stream = self.pa.open(format=pyaudio.paInt16,
-            channels=1,
-            rate=self.rate,
-            input=True,
-            output=False,
-            frames_per_buffer=chunk)
+        while not quit_signal.is_set() and not abort_signal.is_set():
+            time.sleep(0.01)
 
-        frames = []
+        _t = time.time()
+        while (time.time() - _t) < duration and not abort_signal.is_set():
+            time.sleep(0.01)
 
-        if quit_signal is not None:
-            while not quit_signal.is_set() and not abort_signal.is_set():
-                data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
-                frames.append(data)
-
-        if duration is not None:
-            for i in range(0, int(self.rate / chunk * duration)):
-                if abort_signal.is_set():
-                    break
-                data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
-                frames.append(data)
-
-        stream.close()
-
-        if not len(frames):
-            return
-        data = np.concatenate(frames)
+        recorded_data = self._record_buffer.data[_recording_started_at:]
+        self._record_buffer.set_maxlen(2048)
 
         if not os.path.exists(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
@@ -293,7 +379,7 @@ class PyAudioInterface(base_.AudioInterface):
         scipy.io.wavfile.write(
             dest,
             self.rate,
-            data
+            recorded_data
         )
 
     def _record(self, event=None, duration=0, dest=None, **kwargs):
@@ -311,7 +397,7 @@ class PyAudioInterface(base_.AudioInterface):
         t.start()
         return t, new_quit_signal
 
-    def _stop_record(self, event=None, thread=None, quit_signal=None, **kwargs):
+    def _stop_record(self, event=None, quit_signal=None, **kwargs):
         if quit_signal is not None:
             quit_signal.set()
 

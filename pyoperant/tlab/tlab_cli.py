@@ -75,7 +75,7 @@ def test_audio(box, file_, repeat):
 
 @click.command(help="Test box's microphone recording")
 @add_options(box_required)
-@click.option("-d", "--duration", type=float, help="time to record for")
+@click.option("-d", "--duration", type=float, help="time to record for", default=1.0)
 @click.option("--playback/--no-playback", default=True, help="play audio from speakers")
 def test_mic(box, duration, playback):
     from pyoperant.tlab.tlab_commands import test_microphone
@@ -337,6 +337,7 @@ def diagnostics(box, file_, raise_, configs, full):
             click.echo("Skipping {} (failed to instantiate)".format(failed_box.__name__))
 
         with tempfile.TemporaryDirectory() as tempdir:
+            output_files = []
             for box in boxes_succeeded:
                 click.echo()
                 click.echo("Testing box {}".format(box))
@@ -345,6 +346,7 @@ def diagnostics(box, file_, raise_, configs, full):
                 mic_dest = os.path.join(tempdir, "{}_mic_test.wav".format(type(box).__name__))
                 click.echo("Testing microphone on box {}".format(box))
                 output = box.test_mic_recording(play_audio=True, duration=0.0, dest=mic_dest)
+                output_files.append(mic_dest)
 
             click.echo()
             click.prompt("Microphone tests complete. Check or copy wav files in {} before proceeding "

@@ -622,7 +622,7 @@ class Microphone(BaseComponent):
             dest=dest
         )
 
-    def stop(self, key=None):
+    def stop(self, key):
         self.event["action"] = "stop"
         self.input.stop_recording(event=self.event, key=key)
 

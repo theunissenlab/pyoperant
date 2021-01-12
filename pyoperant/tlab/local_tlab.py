@@ -92,7 +92,7 @@ class Panel125(panels.BasePanel):
 
         # Create a mic input
         if mic is not None:
-            mic_in = pyaudio_.PyAudioInterface(device_name=mic)
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic, is_mic=True)
             audio_in = hwio.AudioInput(interface=mic_in)
             self.mic = components.Microphone(audio_in)
 
@@ -232,14 +232,14 @@ class Panel125(panels.BasePanel):
             if play_audio:
                 self.speaker.queue(filename)
                 self.speaker.play()
+                self.speaker.let_finish()
             else:
                 utils.wait(duration)
-
-            self.speaker.let_finish()
         except KeyboardInterrupt:
             return dest
         finally:
-            self.speaker.stop()
+            if play_audio:
+                self.speaker.stop()
             self.mic.stop(key)
 
         return dest

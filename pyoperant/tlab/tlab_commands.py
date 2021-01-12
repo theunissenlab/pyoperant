@@ -8,8 +8,9 @@ from pyoperant import configure
 
 # Set up default directories
 HOME_DIR = os.path.abspath(os.path.expanduser("~"))
-stimuli_dir = os.path.join(HOME_DIR, "stimuli")
-config_dir = os.path.join(HOME_DIR, "configs")
+BASE_DIR = '/data/pecking_test'
+stimuli_dir = os.path.join(BASE_DIR, "stimuli")
+config_dir = os.path.join(BASE_DIR, "configs")
 data_dir = os.path.join(HOME_DIR, "data")
 
 
