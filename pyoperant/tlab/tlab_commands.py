@@ -1,9 +1,11 @@
 # Scripting commands for operating pecking boxes
 # and command line operation
 import datetime
+import importlib
 import os
 
 from pyoperant import configure
+from pyoperant.utils import get_object_from_string
 
 
 # Set up default directories
@@ -80,9 +82,12 @@ def prepare_todays_experiment(
         config,
         subject,
         experimenter,
+        preference_test,
         output_dir,
     ):
     """Prepare folders and symlinks for today's experiment
+
+    Does not instantiate the panels
 
     Separated from the run() function so that the directory structure
     can be set up before the run function is actually called.
@@ -121,6 +126,19 @@ def prepare_todays_experiment(
     if output_dir:
         parameters["experiment_path"] = output_dir
 
+    # Instantiate the test conditions
+    conditions = {"pecking": []}
+    for condition_dict in parameters["conditions"]["pecking"]:
+        Condition = get_object_from_string(condition_dict["class"])
+        conditions["pecking"].append(Condition(file_path=condition_dict["file_path"]))
+
+    if preference_test:
+        conditions["playback"] = []
+        for condition_dict in parameters["conditions"]["playback"]:
+            Condition = get_object_from_string(condition_dict["class"])
+            conditions["playback"].append(Condition(file_path=condition_dict["file_path"]))
+    parameters["conditions"] = conditions
+
     # Create an output directory with the subject name and today's date
     parameters["experiment_path"] = get_daily_experiment_path(
         parameters["experiment_path"],
@@ -146,7 +164,8 @@ def run(
         subject,
         experimenter,
         preference_test,
-        output_dir
+        output_dir,
+        config_override_fn=None
     ):
     """Loads config, sets up data locations, and runs the pecking test
 
@@ -168,10 +187,22 @@ def run(
         config,
         subject,
         experimenter,
+        preference_test,
         output_dir
     )
+    parameters["panel"] = get_object_from_string(parameters["panel"])()
+
+    # config_override_fn can arbitraily modify the parameters
+    if config_override_fn is not None:
+        parameters = config_override_fn(parameters)
 
     if preference_test:
+        for playback_condition in parameters["conditions"]["playback"]:
+            print(playback_condition)
+            if not len(playback_condition.files):
+                raise IOError("Playback condition {} for preference test found no files at {}".format(
+                    playback_condition, playback_condition.file_path
+                ))
         exp = PeckingAndPlaybackTest(**parameters)
     else:
         # Conditions can contain a "pecking" and a "playback" dict for preference tests
@@ -183,3 +214,45 @@ def run(
         exp = PeckingTest(**parameters)
 
     exp.run()
+
+
+def shape(
+        box,
+        config,
+        subject,
+        experimenter,
+        preference_test,
+        output_dir,
+        reward_probability=1.0,
+        reward_duration=12.0,
+    ):
+    """Runs pecking test but can override more config parameters
+
+    """
+
+    def config_override_fn(parameters):
+        if not 0 <= reward_probability <= 1:
+            raise ValueError("Cannot run shaping with reward probability {}".format(reawrd_probability))
+
+        parameters["queue_parameters"]["pecking"]["weights"] = [
+            reward_probability,
+            1 - reward_probability
+        ]
+        parameters["reward_value"] = reward_duration
+        print("Running shaping with parameters {}".format(parameters))
+        return parameters
+
+    print("Running shaping with reward probability {} and reward_duration {}".format(
+        reward_probability,
+        reward_duration,
+    ))
+
+    run(
+        box,
+        config,
+        subject,
+        experimenter,
+        preference_test,
+        output_dir,
+        config_override_fn=config_override_fn
+    )

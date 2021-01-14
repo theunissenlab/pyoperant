@@ -58,6 +58,10 @@ def add_options(options):
 
 @click.group()
 def cli():
+    """Main controls for running the pecking test
+
+    Use 'peckd' instead to manage 'pecking-test run' in background screen tasks
+    """
     pass
 
 
@@ -148,7 +152,7 @@ def prepare_paths(box, config, subject, experimenter, output_dir):
     to be created before the experiment itself is run
     """
     from pyoperant.tlab.tlab_commands import prepare_todays_experiment
-    prepare_todays_experiment(box, config, subject, experimenter, output_dir)
+    prepare_todays_experiment(box, config=config, subject=subject, experimenter=experimenter, preference_test=False, output_dir=output_dir)
 
 
 @click.command(help="Run the pecking test on specific box")
@@ -170,6 +174,36 @@ def run(box, config, subject, experimenter, preference_test, output_dir):
         experimenter,
         preference_test,
         output_dir
+    )
+
+
+@click.command(help="Run the pecking test on specific box")
+@add_options(box_required)
+@click.option("-c", "--config", type=click.Path(dir_okay=False), help="override default yaml config file")
+@click.option("-s", "--subject", help="override config file subject name")
+@click.option("-e", "--experimenter", help="override config file experimenter name")
+@click.option("-r", "--p-reward", help="set reward probability (0 - 1)", type=click.FloatRange(0, 1, clamp=True))
+@click.option("-d", "--reward-duration", help="Set reward duration in seconds", type=float, default=12.0)
+@click.option("-p/ ", "--preference/--no-preference", "preference_test",
+        default=False, help="run preference test (default=False)")
+@click.option("--output-dir", help="override data output directory")
+def shape(box, config, subject, experimenter, preference_test, output_dir, p_reward, reward_duration):
+    """Loads config and runs the main pecking test
+    """
+    from pyoperant.tlab.tlab_commands import shape
+    if p_reward is None:
+        click.echo("Need to specify probability of reward --p-reward FLOAT during shaping")
+        return
+
+    shape(
+        box,
+        config,
+        subject,
+        experimenter,
+        preference_test,
+        output_dir,
+        reward_probability=p_reward,
+        reward_duration=reward_duration,
     )
 
 
@@ -446,6 +480,7 @@ cli.add_command(shell)
 cli.add_command(diagnostics)
 # cli.add_command(calibrate_key)
 cli.add_command(run)
+cli.add_command(shape)
 cli.add_command(prepare_paths)
 cli.add_command(test_audio)
 cli.add_command(test_mic)

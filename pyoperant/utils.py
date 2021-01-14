@@ -1,3 +1,4 @@
+import importlib
 import wave
 import sys
 import struct
@@ -42,6 +43,16 @@ class NumpyAwareJSONEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
                 return obj.tolist()
         return json.JSONEncoder.default(self, obj)
+
+
+def get_object_from_string(object_string):
+    """Convert a string defining the import path of an object to the object itself
+
+    Example: convert string 'pyoperant.behavior.go_no_go_interrupt.RewardedCondition'
+    into the RewardedCondition object by importing the module
+    """
+    module, obj_name = object_string.rsplit(".", 1)
+    return getattr(importlib.import_module(module), obj_name)
 
 
 def filter_files(directory, file_pattern="*", recursive=False):
