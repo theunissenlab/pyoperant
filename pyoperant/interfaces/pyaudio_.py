@@ -1,8 +1,10 @@
+
 from ctypes import *
 from contextlib import contextmanager
 import os
 import logging
 import sys
+import queue
 import threading
 import numpy as np
 import scipy.io.wavfile
@@ -183,6 +185,7 @@ class PyAudioInterface(base_.AudioInterface):
         self._playback_lock = threading.Lock()
 
         if is_mic:
+            self.record_queue = queue.Queue()
             self.rec_stream = None
             self._record_buffer = RecordBuffer(maxlen=2048)
             self.listen()
@@ -328,6 +331,8 @@ class PyAudioInterface(base_.AudioInterface):
     def rec_callback(self, in_data, frame_count, time_info, status):
         data = np.frombuffer(in_data, dtype=np.int16)
         self._record_buffer.extend(data)
+        if self._record_buffer.maxlen is None:
+            self.record_queue.put(data)
         return in_data, pyaudio.paContinue
 
     def listen(self):
@@ -369,8 +374,13 @@ class PyAudioInterface(base_.AudioInterface):
         while (time.time() - _t) < duration and not abort_signal.is_set():
             time.sleep(0.01)
 
-        recorded_data = self._record_buffer.data[_recording_started_at:]
         self._record_buffer.set_maxlen(2048)
+        recorded_data = []
+        while not self.record_queue.empty():  # or 'while' instead of 'if'
+            item = self.record_queue.get()
+            recorded_data.append(item)
+        recorded_data = np.concatenate(recorded_data)
+        # recorded_data = self._record_buffer.data[_recording_started_at:]
 
         if not os.path.exists(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
@@ -441,7 +451,7 @@ class MockPyAudioInterface(PyAudioInterface):
         # with mock.patch("pyaudio.PyAudio.get_device_info_by_index", return_value={"name": self.device_name}):
             # return super().open()
 
-    
+
 
 if __name__ == "__main__":
 
