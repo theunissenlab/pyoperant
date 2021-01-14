@@ -171,10 +171,8 @@ class GoNoGoInterrupt(base.BaseExp):
 
     def reward_main(self):
         """ Reward a correct non-interruption """
-
-        value = self.parameters.get('reward_value', 12)
-        logger.info("Supplying reward for %3.2f seconds" % value)
-        reward_event = self.panel.reward(value=value)
+        logger.info("Supplying reward for %3.2f seconds" % self.reward_value)
+        reward_event = self.panel.reward(value=self.reward_value)
         if isinstance(reward_event, dt.datetime): # There was a response during the reward period
             self.start_immediately = True
 

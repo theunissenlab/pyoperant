@@ -137,12 +137,11 @@ class PeckingTest(GoNoGoInterrupt):
                                      self.snapshot_f,
                                      overwrite=True)
 
-    def reward(self):
+    def reward_main(self):
         """
         Custom reward method to put the feeder up during the reward period but still respond to pecks. If the key is pecked, the next trial begins immediately.
         :return:
         """
-
         logger.info("Supplying reward for %3.2f seconds" % self.reward_value)
         reward_event = self.panel.reward(value=self.reward_value)
         # There was a response during the reward period
