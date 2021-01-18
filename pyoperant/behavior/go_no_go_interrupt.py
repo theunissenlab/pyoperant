@@ -149,9 +149,10 @@ class GoNoGoInterrupt(base.BaseExp):
         # Thats why it would be better to link the polling period
         # with the playback completion itself
         if not self.this_trial.response_time:
-            _start = time.time()
-            self.panel.speaker.let_finish()
-            logger.debug("go_no_go_interrupt.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
+            self.panel.speaker.stop()
+            # _start = time.time()
+            # self.panel.speaker.let_finish()
+            # logger.debug("go_no_go_interrupt.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
         else:
             self.panel.speaker.stop()
 

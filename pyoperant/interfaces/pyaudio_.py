@@ -89,7 +89,7 @@ class RecordBuffer(object):
     When maxlen is set to None with set_maxlen(None)
     the buffer will continue to accumulate indefinitely
     """
-    def __init__(self, maxlen=None):
+    def __init__(self, maxlen=0):
         self.maxlen = maxlen
         self.start = 0
         self.length = 0
@@ -115,7 +115,7 @@ class RecordBuffer(object):
         if self.data is not None and len(self.data) == self.maxlen:
             return
 
-        if self.maxlen is not None:
+        if self.maxlen > 0:
             if len(self.data) > self.maxlen:
                 self.data = self.data[-self.maxlen:]
                 self.length = min(self.length, self.maxlen)
@@ -133,7 +133,7 @@ class RecordBuffer(object):
             to_add = to_add[:, None]
 
         if self.data is None:
-            if self.maxlen is not None:
+            if self.maxlen > 0:
                 self.data = np.zeros((self.maxlen, to_add.shape[1]))
                 self.length = 0
             else:
@@ -144,7 +144,7 @@ class RecordBuffer(object):
         if self.data.shape[1] != to_add.shape[1]:
             raise ValueError("Cannot extend array with incompatible shape")
 
-        if self.maxlen is not None:
+        if self.maxlen > 0:
             if len(data) >= self.maxlen:
                 self.data[:] = to_add[:-self.maxlen:]
                 self.length = len(self.data)
@@ -187,7 +187,7 @@ class PyAudioInterface(base_.AudioInterface):
         if is_mic:
             self.record_queue = queue.Queue()
             self.rec_stream = None
-            self._record_buffer = RecordBuffer(maxlen=2048)
+            self._record_buffer = RecordBuffer(maxlen=24000)
             self.listen()
 
     def set_gain(self, gain):
@@ -331,7 +331,7 @@ class PyAudioInterface(base_.AudioInterface):
     def rec_callback(self, in_data, frame_count, time_info, status):
         data = np.frombuffer(in_data, dtype=np.int16)
         self._record_buffer.extend(data)
-        if self._record_buffer.maxlen is None:
+        if self._record_buffer.maxlen == 0:
             self.record_queue.put(data)
         return in_data, pyaudio.paContinue
 
@@ -364,7 +364,7 @@ class PyAudioInterface(base_.AudioInterface):
         abort_signal : threading.Event
             thread-safe signal that will end the recording when the event is set
         """
-        self._record_buffer.set_maxlen(None)
+        self._record_buffer.set_maxlen(0)
         _recording_started_at = self._record_buffer.length
 
         while not quit_signal.is_set() and not abort_signal.is_set():
@@ -374,7 +374,7 @@ class PyAudioInterface(base_.AudioInterface):
         while (time.time() - _t) < duration and not abort_signal.is_set():
             time.sleep(0.01)
 
-        self._record_buffer.set_maxlen(2048)
+        self._record_buffer.set_maxlen(24000)
         recorded_data = []
         while not self.record_queue.empty():  # or 'while' instead of 'if'
             item = self.record_queue.get()

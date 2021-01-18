@@ -267,7 +267,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
             self.this_trial.rt = np.nan
             utils.wait(self.this_trial.stimulus.duration)
             _start = time.time()
-            self.panel.speaker.let_finish()
+            # self.panel.speaker.let_finish()
             logger.debug("pecking_test.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
             self.panel.speaker.stop()
 
