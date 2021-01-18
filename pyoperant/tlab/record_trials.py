@@ -26,6 +26,12 @@ class RecordTrialsMixin(object):
 
         return recording_path
 
+    def save_wavfile(self, data, rate, dest):
+        if not os.path.exists(os.path.dirname(dest)):
+            os.makedirs(os.path.dirname(dest))
+
+        scipy.io.wavfile.write(dest, rate, data)
+
     def end(self):
         if self.panel.mic:
             self.panel.mic.input.interface.close()

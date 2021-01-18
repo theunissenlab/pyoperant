@@ -83,78 +83,118 @@ def log_alsa_warnings():
         yield
 
 
-class RecordBuffer(object):
-    """Buffers a fixed amount of data
+class RingBuffer(object):
+    """A circular buffer
 
-    When maxlen is set to None with set_maxlen(None)
-    the buffer will continue to accumulate indefinitely
+    Allocates space for the max buffer length. Use RingBuffer.extend(data)
+    to add to the buffer and RingBuffer.to_array() to get the current contents.
+
+    Methods
+    =======
+    RingBuffer.extend(data)
+        Extends the buffer with a 2D numpy array
+    RingBuffer.to_array()
+        Return an array representation of data in the buffer (copied
+        so that it can be modified without affecting the buffer)
     """
-    def __init__(self, maxlen=0):
+    def __init__(self, maxlen=0, n_channels=None):
+        """Initialize circular buffer
+
+        Params
+        ======
+        maxlen : int (default 0)
+            Maximum size of buffer
+        n_channels : int (default None)
+            Enforce number of channels in buffer. If None,
+            will choose the number of channels the first time .extend()
+            is called.
+        """
         self.maxlen = maxlen
-        self.start = 0
-        self.length = 0
-        self.data = None
+
+        # Keep track of original value for if the buffer is cleared
+        self._init_n_channels = n_channels
+        self.n_channels = n_channels
+
+        # Data is stored in a numpy array of maxlen even when
+        # the amount of data is smaller than that. When data
+        # exceeds maxlen we loop around and keep track of where we
+        # started.
+        self._write_at = 0  # Where the next data should be written
+        self._length = 0  # The amount of samples of real data in the buffer
+        self._start = 0  # Starting index where data should be read from
+        self._overlapping = False  # Has the data wrapper around the end
+        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0))
 
     def __len__(self):
-        return self.length
+        return self._length
 
     def __array__(self):
-        if self.data is None:
-            return np.array([])
+        return self.to_array()
+
+    def to_array(self):
+        # Read to the end and then wrap around to the beginning
+        # if self._start + self._length > self.maxlen:
+        if self._overlapping:
+            return np.roll(self._ringbuffer, -self._start, axis=0)
         else:
-            return self.data[-self.length:]
+            return self._ringbuffer[:self._length].copy()
 
     def clear(self):
-        self.data = None
-        self.length = 0
-
-    def set_maxlen(self, maxlen=None):
-        """Set maxlen and adjust data array size"""
-        self.maxlen = maxlen
-
-        if self.data is not None and len(self.data) == self.maxlen:
-            return
-
-        if self.maxlen > 0:
-            if len(self.data) > self.maxlen:
-                self.data = self.data[-self.maxlen:]
-                self.length = min(self.length, self.maxlen)
-            else:
-                extended_data = np.zeros((self.maxlen, self.data.shape[1]))
-                extended_data[-len(self.data):] = self.data
-                self.length = len(self.data)
-                self.data = extended_data
-        elif self.data is not None:
-            self.data = self.data[-self.length:]
+        self._write_at = 0
+        self._length = 0
+        self._start = 0
+        self.n_channels = self._init_n_channels
+        self._overlapping = False
+        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0))
 
     def extend(self, data):
+        """Extend the buffer with a 2D (samples x channels) array
+
+        Requires shape to be consistent with existing data
+        """
+        if self.maxlen == 0:
+            return
+
+        # Reshape 1-D signals to be 2D with one channel
         to_add = np.array(data)
         if to_add.ndim == 1:
             to_add = to_add[:, None]
 
-        if self.data is None:
-            if self.maxlen > 0:
-                self.data = np.zeros((self.maxlen, to_add.shape[1]))
-                self.length = 0
-            else:
-                self.data = np.zeros((0, to_add.shape[1]))
-                self.length = 0
+        # Enforce channels here
+        if self.n_channels and to_add.shape[1] != self.n_channels:
+            raise ValueError("Cannot extend {} channel Buffer with data of shape {}".format(
+                self.n_channels,
+                to_add.shape
+            ))
 
-        # Validate that the dimensions are correct
-        if self.data.shape[1] != to_add.shape[1]:
-            raise ValueError("Cannot extend array with incompatible shape")
+        if self._length == 0 and self.n_channels is None:
+            self._ringbuffer = np.zeros((self.maxlen, to_add.shape[1]))
+            self.n_channels = to_add.shape[1]
 
-        if self.maxlen > 0:
-            if len(data) >= self.maxlen:
-                self.data[:] = to_add[:-self.maxlen:]
-                self.length = len(self.data)
-            else:
-                self.data = np.roll(self.data, -len(to_add))
-                self.data[-len(to_add):] = to_add
-                self.length = min(self.maxlen, self.length + len(to_add))
+        if len(to_add) > self.maxlen:
+            self._ringbuffer[:] = to_add[-self.maxlen:]
+            self._write_at = 0
+            self._length = self.maxlen
+            self._start = 0
+            self._overlapping = False
+        elif self._write_at + len(to_add) < self.maxlen:
+            self._ringbuffer[self._write_at:self._write_at + len(to_add)] = to_add
+            self._write_at += len(to_add)
+            self._length = self.maxlen if self._overlapping else self._write_at
+            self._start = self._write_at if self._overlapping else 0
         else:
-            self.data = np.concatenate([self.data, to_add])
-            self.length = len(self.data)
+            first_part_size = self.maxlen - self._write_at
+            first_part = to_add[:first_part_size]
+            second_part = to_add[first_part_size:]
+            self._ringbuffer[self._write_at:] = first_part
+            self._ringbuffer[:len(second_part)] = second_part
+            self._write_at = len(second_part)
+            self._length = self.maxlen
+            self._start = self._write_at
+            self._overlapping = True
+
+    def get_last(self, n_samples):
+        return self.to_array()[-n_samples:]
 
 
 class PyAudioInterface(base_.AudioInterface):
@@ -187,7 +227,7 @@ class PyAudioInterface(base_.AudioInterface):
         if is_mic:
             self.record_queue = queue.Queue()
             self.rec_stream = None
-            self._record_buffer = RecordBuffer(maxlen=24000)
+            self.record_buffer = RingBuffer()
             self.listen()
 
     def set_gain(self, gain):
@@ -330,9 +370,7 @@ class PyAudioInterface(base_.AudioInterface):
 
     def rec_callback(self, in_data, frame_count, time_info, status):
         data = np.frombuffer(in_data, dtype=np.int16)
-        self._record_buffer.extend(data)
-        if self._record_buffer.maxlen == 0:
-            self.record_queue.put(data)
+        self.record_buffer.extend(data)
         return in_data, pyaudio.paContinue
 
     def listen(self):
@@ -348,68 +386,13 @@ class PyAudioInterface(base_.AudioInterface):
             stream_callback=self.rec_callback
         )
 
-    def _run_record(self, duration=None, dest=None, quit_signal=None, abort_signal=None):
-        """Record audio from pyaudio stream for a fixed duration or until a quit signal
+        # Set up buffer to store last 10 seconds of audio at all times
+        self.record_buffer = RingBuffer(int(self.rate) * 10)
 
-        Parameters
-        ----------
-        duration : float
-            Specify either the duration in seconds to record for
-            (if quit_signal is not set), or the duration to record after the
-            quit signal is received (padding)
-        dest : str
-            Path to save recorded data to
-        quit_signal : threading.Event
-            thread-safe signal that will end the recording when the event is set
-        abort_signal : threading.Event
-            thread-safe signal that will end the recording when the event is set
-        """
-        self._record_buffer.set_maxlen(0)
-        _recording_started_at = self._record_buffer.length
-
-        while not quit_signal.is_set() and not abort_signal.is_set():
-            time.sleep(0.01)
-
-        _t = time.time()
-        while (time.time() - _t) < duration and not abort_signal.is_set():
-            time.sleep(0.01)
-
-        self._record_buffer.set_maxlen(24000)
-        recorded_data = []
-        while not self.record_queue.empty():  # or 'while' instead of 'if'
-            item = self.record_queue.get()
-            recorded_data.append(item)
-        recorded_data = np.concatenate(recorded_data)
-        # recorded_data = self._record_buffer.data[_recording_started_at:]
-
-        if not os.path.exists(os.path.dirname(dest)):
-            os.makedirs(os.path.dirname(dest))
-        logger.debug("Finished recording, writing to {}".format(dest))
-
-        scipy.io.wavfile.write(
-            dest,
-            self.rate,
-            recorded_data
-        )
-
-    def _record(self, event=None, duration=0, dest=None, **kwargs):
-        new_quit_signal = threading.Event()
-
-        t = threading.Thread(
-            target=self._run_record,
-            args=(duration,),
-            kwargs={
-                "dest": dest,
-                "quit_signal": new_quit_signal,
-                "abort_signal": self.abort_signal
-            }
-        )
-        t.start()
-        return t, new_quit_signal
-
-    def _stop_record(self, event=None, quit_signal=None, **kwargs):
-        if quit_signal is not None:
-            quit_signal.set()
+    def _get_last_recorded_data(self, duration):
+        """Get last few seconds of recorded audio input from mic buffer"""
+        n_samples = int(duration * self.rate)
+        return self.record_buffer.get_last(n_samples)
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         if self._playback_quit_signal:
