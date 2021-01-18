@@ -437,7 +437,7 @@ def diagnose_config(box):
                 " Will not be able to run preference tests".format(keys))
     else:
         playback_condition = conditions["playback"][0]
-        stim_directory = playback_condition.file_path
+        stim_directory = playback_condition["file_path"]
         if not os.path.exists(stim_directory):
             CLIResult.fail("playback directory {} not found".format(stim_directory))
         elif not len(glob.glob(os.path.join(stim_directory, "*.wav"))):
@@ -452,8 +452,8 @@ def diagnose_config(box):
     else:
         rewarded_condition = conditions["pecking"][0]
         nonrewarded_condition = conditions["pecking"][1]
-        rewarded_dir = rewarded_condition.file_path
-        nonrewarded_dir = nonrewarded_condition.file_path
+        rewarded_dir = rewarded_condition["file_path"]
+        nonrewarded_dir = nonrewarded_condition["file_path"]
 
         if not os.path.exists(rewarded_dir):
             CLIResult.fail("rewarded stim directory {} not found".format(rewarded_dir))
