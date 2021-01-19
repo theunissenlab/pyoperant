@@ -247,7 +247,6 @@ class Panel125(panels.BasePanel):
         finally:
             if play_audio:
                 self.speaker.stop()
-            self.mic.stop()
 
         return dest
 
