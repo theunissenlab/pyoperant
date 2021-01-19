@@ -390,9 +390,6 @@ def diagnostics(box, file_, raise_, full):
 
     click.echo("Diagnostics completed")
 
-    for box in boxes_succeeded:
-        box.mic.stop()
-
 
 def diagnose_config(box):
     """Step through box's config file and report errors"""

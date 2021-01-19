@@ -234,10 +234,8 @@ class PyAudioInterface(base_.AudioInterface):
         self.play_thread = None
         self._playback_quit_signal = None
         self._playback_lock = threading.Lock()
-        self.capture_thread = None
 
         if is_mic:
-            self.record_queue = queue.Queue()
             self.rec_stream = None
             self.record_buffer = RingBuffer()
             self.listen()
@@ -265,7 +263,6 @@ class PyAudioInterface(base_.AudioInterface):
         if not sys.is_finalizing():
             logger.debug("Closing device")
 
-        self.stop()
         self.abort_signal.set()
         self.abort_signal = threading.Event()
 
@@ -304,46 +301,34 @@ class PyAudioInterface(base_.AudioInterface):
             logging.error("IOError on opening pa stream. Not sure why")
             raise
 
-        try:
-            data = wf.readframes(chunk)
+        data = wf.readframes(chunk)
 
-            last_time = time.time()
-            dts = []
-            while data != b"":
-                if quit_signal.is_set() or abort_signal.is_set():
-                    logger.debug("Attempting to close pyaudio stream on interrupt")
-                    stream.close()
-                    logger.debug("Stream closed")
-                    break
-
-                dtype, max_val = self._get_dtype(wf)
-                data = np.frombuffer(data, dtype)
-
-                if self.gain:
-                    data = data * np.power(10.0, self.gain / 20.0)
-
-                data = data.astype(dtype).tostring()
-                stream.write(data)
-                data = wf.readframes(chunk)
-                dts.append(time.time() - last_time)
-                last_time = time.time()
-            else:  # This block is run when the while condition becomes False (not on break)
-                logger.debug("Attempting to close pyaudio stream on file complete")
-                # Extra wait at the end to make sure the whole file is played through.
-                # Don't want to hold the lock for too long though.
-                # utils.wait(0.3)
-                # stream.close()
+        last_time = time.time()
+        dts = []
+        while data != b"":
+            if quit_signal.is_set() or abort_signal.is_set():
+                logger.debug("Attempting to close pyaudio stream on interrupt")
+                stream.close()
+                self._playback_lock.release()
                 logger.debug("Stream closed")
-        except:
-            raise
-        finally:
-            self._playback_lock.release()
+                break
 
-        logger.debug("mean={:.6f} median={:.6f} max={:.6f}".format(
-            np.mean(dts),
-            np.median(dts),
-            np.max(dts)
-        ))
+            dtype, max_val = self._get_dtype(wf)
+            data = np.frombuffer(data, dtype)
+
+            if self.gain:
+                data = data * np.power(10.0, self.gain / 20.0)
+
+            data = data.astype(dtype).tostring()
+            stream.write(data)
+            data = wf.readframes(chunk)
+            dts.append(time.time() - last_time)
+            last_time = time.time()
+        else:  # This block is run when the while condition becomes False (not on break)
+            logger.debug("Attempting to close pyaudio stream on file complete")
+            # stream.close()
+            self._playback_lock.release()
+            logger.debug("Stream closed")
 
         try:
             wf.close()
@@ -381,22 +366,8 @@ class PyAudioInterface(base_.AudioInterface):
 
     def rec_callback(self, in_data, frame_count, time_info, status):
         data = np.frombuffer(in_data, dtype=np.int16)
-        self.record_queue.put(data)
+        self.record_buffer.extend(data)
         return in_data, pyaudio.paContinue
-
-    def _consume_mic_input(self):
-        while not self.abort_signal.is_set():
-            try:
-                item = self.record_queue.get(timeout=1.0)
-            except queue.Empty:
-                break
-            self.record_buffer.extend(item)
-
-    def stop(self):
-        try:
-            self.rec_stream.close()
-        except:
-            pass
 
     def listen(self):
         """Start microphone recording stream
@@ -414,8 +385,6 @@ class PyAudioInterface(base_.AudioInterface):
 
         # Set up buffer to store last 10 seconds of audio at all times
         self.record_buffer = RingBuffer(int(self.rate) * 10)
-        self.capture_thread = threading.Thread(target=self._consume_mic_input)
-        self.capture_thread.start()
 
     def _get_last_recorded_data(self, duration):
         """Get last few seconds of recorded audio input from mic buffer"""

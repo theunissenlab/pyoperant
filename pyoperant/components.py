@@ -616,9 +616,6 @@ class Microphone(BaseComponent):
     def record_last(self, duration):
         return self.input.get_recorded_data(duration)
 
-    def stop(self):
-        self.input.interface.stop()
-
 # ## Perch ##
 
 # class Perch(BaseComponent):

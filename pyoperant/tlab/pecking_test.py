@@ -149,10 +149,6 @@ class PeckingTest(GoNoGoInterrupt):
             self.this_trial.reward = False  # maybe use reward_event here instead?
             self.start_immediately = True
 
-    def end(self):
-        self.panel.mic.stop()
-        super(PeckingTest, self).end()
-
 
 class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
     """A go no-go interruption experiment combined with occasional playbacks
@@ -245,6 +241,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
     def stimulus_pre(self):
         super(PeckingAndPlaybackTest, self).stimulus_pre()
+        self._stim_start_time = time.time()
         for block_name in self.block_queue.blocks:
             if self.this_trial.block == self.block_queue.blocks[block_name]:
                 self.panel.speaker.set_gain(self.gain.get(block_name, None))
@@ -256,18 +253,15 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         else:
             self.this_trial.rt = np.nan
             utils.wait(self.this_trial.stimulus.duration)
-            _start = time.time()
-            # self.panel.speaker.let_finish()
-            logger.debug("pecking_test.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
             self.panel.speaker.stop()
 
     def response_post(self):
         super(PeckingAndPlaybackTest, self).response_post()
 
-        # If this is a block we are supposed to record, save the last whateer seconds
+        # If this is a block we are supposed to record, save the last whatever seconds
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
                 utils.wait(1.0)  # Record for one extra second after the end of the stim
-                data, rate = self.panel.mic.record_last(self.this_trial.stimulus.duration + 3.0)
+                data, rate = self.panel.mic.record_last(time.time() - self._stim_start_time)
                 self.save_wavfile(data, rate, self.get_wavfile_path())
                 break
