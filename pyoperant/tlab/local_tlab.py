@@ -56,7 +56,8 @@ class Panel125(panels.BasePanel):
     --------
     """
 
-    _default_sound_file = "/home/fet/test_song.wav"
+    _default_sound_file = "/data/pecking_test/stimuli/debugging/test_song.wav"
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/test_song.wav"
 
     def __init__(self, arduino=None, speaker=None, mic=None, name=None, *args, **kwargs):
         super(Panel125, self).__init__(self, *args, **kwargs)
@@ -218,7 +219,7 @@ class Panel125(panels.BasePanel):
         if filename is given, also plays audio
         """
         if not audio_file:
-            filename = self._default_sound_file
+            filename = self._default_box_sound_file
         else:
             filename = audio_file
 
@@ -230,6 +231,7 @@ class Panel125(panels.BasePanel):
             key = self.mic.record(duration=1.0, dest=dest)
 
             if play_audio:
+                self.speaker.set_gain(-10)
                 self.speaker.queue(filename)
                 self.speaker.play()
                 self.speaker.let_finish()
@@ -247,6 +249,7 @@ class Panel125(panels.BasePanel):
 
 class Box2(Panel125):
 
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box2_sample.wav"
     defaults = dict(
         name="Box 2",
         arduino="/dev/ttyArduino_box2",
@@ -260,6 +263,7 @@ class Box2(Panel125):
 
 class Box3(Panel125):
 
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box3_sample.wav"
     defaults = dict(
         name="Box 3",
         arduino="/dev/ttyArduino_box3",
@@ -273,6 +277,7 @@ class Box3(Panel125):
 
 class Box5(Panel125):
 
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box5_sample.wav"
     defaults = dict(
         name="Box 5",
         arduino="/dev/ttyArduino_box5",
@@ -286,6 +291,7 @@ class Box5(Panel125):
 
 class Box6(Panel125):
 
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box6_sample.wav"
     defaults = dict(
         name="Box 6",
         arduino="/dev/ttyArduino_box6",

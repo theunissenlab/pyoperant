@@ -223,9 +223,8 @@ def shell(box):
         prompt="Select box (leave blank for general diagnostics)", default="")
 @click.option("-f", "--file", "file_", type=click.Path(exists=True, dir_okay=False), help="path to sound file to test")
 @click.option("-r/ ", "--raise/--no-raise", "raise_", default=False, help="raise exception on caught errors")
-@click.option("--configs", is_flag=True, help="skip slower steps")
 @click.option("--full", is_flag=True, help="include even the slower steps")
-def diagnostics(box, file_, raise_, configs, full):
+def diagnostics(box, file_, raise_, full):
     """Runs diagnostic tests for one or all boxes, including hardware, config, software
     """
     click.echo()
@@ -311,7 +310,6 @@ def diagnostics(box, file_, raise_, configs, full):
         mic = audio_devices.get(mic_name)
         if mic:
             CLIResult.success("Found {}".format(mic_name))
-            click.echo(mic)
         else:
             CLIResult.fail("Could not find {}".format(mic_name))
 
@@ -358,11 +356,10 @@ def diagnostics(box, file_, raise_, configs, full):
     click.echo()
     click.echo("Device check complete")
 
-    if configs or full:
-        click.echo("Checking configuration files...")
-        for num in box_nums:
-            click.echo()
-            diagnose_config(num)
+    click.echo("Checking configuration files...")
+    for num in box_nums:
+        click.echo()
+        diagnose_config(num)
 
     click.echo()
 
