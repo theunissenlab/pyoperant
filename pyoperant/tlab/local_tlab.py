@@ -3,8 +3,11 @@ import os
 import logging
 import argparse
 import tempfile
+import time
 from functools import wraps
 from unittest import mock
+
+import scipy.io.wavfile
 
 from pyoperant import hwio, components, panels, utils, InterfaceError
 from pyoperant.interfaces import pyaudio_, arduino_
@@ -228,8 +231,7 @@ class Panel125(panels.BasePanel):
             dest = os.path.join(tempdir, "test_mic_recording_{}.wav".format(self.__name__))
 
         try:
-            key = self.mic.record(duration=1.0, dest=dest)
-
+            _start = time.time()
             if play_audio:
                 self.speaker.set_gain(-10)
                 self.speaker.queue(filename)
@@ -237,12 +239,15 @@ class Panel125(panels.BasePanel):
                 self.speaker.let_finish()
             else:
                 utils.wait(duration)
+
+            data, rate = self.mic.record_last(time.time() - _start)
+            scipy.io.wavfile.write(dest, rate, data)
         except KeyboardInterrupt:
             return dest
         finally:
             if play_audio:
                 self.speaker.stop()
-            self.mic.stop(key)
+            self.mic.stop()
 
         return dest
 

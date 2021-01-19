@@ -150,7 +150,7 @@ class PeckingTest(GoNoGoInterrupt):
             self.start_immediately = True
 
     def end(self):
-        self.panel.mic.input.interface.stop()
+        self.panel.mic.stop()
         super(PeckingTest, self).end()
 
 

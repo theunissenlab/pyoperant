@@ -316,7 +316,6 @@ def diagnostics(box, file_, raise_, full):
         speaker = audio_devices.get("speaker{}".format(num))
         if speaker:
             CLIResult.success("Found {}".format(speaker_name))
-            click.echo(speaker)
         else:
             CLIResult.fail("Could not find {}".format(speaker_name))
 
@@ -390,6 +389,9 @@ def diagnostics(box, file_, raise_, full):
                 click.echo("Polled from peck port at {:.2f}/s".format(mean_rate))
 
     click.echo("Diagnostics completed")
+
+    for box in boxes_succeeded:
+        box.mic.stop()
 
 
 def diagnose_config(box):
