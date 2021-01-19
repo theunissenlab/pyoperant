@@ -610,22 +610,11 @@ class Microphone(BaseComponent):
     """
 
     def __init__(self, input_, *args, **kwargs):
-
         super(Microphone, self).__init__(*args, **kwargs)
         self.input = input_
 
-    def record(self, duration=None, dest=None):
-        self.event["action"] = "rec"
-        return self.input.start_recording(
-            event=self.event,
-            duration=duration,
-            dest=dest
-        )
-
-    def stop(self, key):
-        self.event["action"] = "stop"
-        self.input.stop_recording(event=self.event, key=key)
-
+    def record_last(self, duration):
+        return self.input.get_recorded_data(duration)
 # ## Perch ##
 
 # class Perch(BaseComponent):

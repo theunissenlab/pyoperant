@@ -149,6 +149,10 @@ class PeckingTest(GoNoGoInterrupt):
             self.this_trial.reward = False  # maybe use reward_event here instead?
             self.start_immediately = True
 
+    def end(self):
+        self.panel.mic.input.interface.stop()
+        super(PeckingTest, self).end()
+
 
 class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
     """A go no-go interruption experiment combined with occasional playbacks
@@ -241,24 +245,10 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
     def stimulus_pre(self):
         super(PeckingAndPlaybackTest, self).stimulus_pre()
-        for block_name in self.record_audio:
-            if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
-                self.recording_key = self.panel.mic.record(
-                    duration=1.0,  # Record for 1 second after quit signal
-                    dest=self.get_wavfile_path()
-                )
-                break
-
         for block_name in self.block_queue.blocks:
             if self.this_trial.block == self.block_queue.blocks[block_name]:
                 self.panel.speaker.set_gain(self.gain.get(block_name, None))
                 break
-
-    def response_post(self):
-        super(PeckingAndPlaybackTest, self).response_post()
-        if self.recording_key is not None:
-            self.panel.mic.stop(self.recording_key)
-            self.recording_key = None
 
     def response_main(self):
         if self.this_trial.block == self.block_queue.blocks["pecking"]:
@@ -271,8 +261,13 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
             logger.debug("pecking_test.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
             self.panel.speaker.stop()
 
-    def end(self):
-        if self.recording_key is not None:
-            self.panel.mic.stop(self.recording_key)
-            self.recording_key = None
-        super(PeckingAndPlaybackTest, self).end()
+    def response_post(self):
+        super(PeckingAndPlaybackTest, self).response_post()
+
+        # If this is a block we are supposed to record, save the last whateer seconds
+        for block_name in self.record_audio:
+            if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
+                utils.wait(1.0)  # Record for one extra second after the end of the stim
+                data, rate = self.panel.mic.record_last(self.this_trial.stimulus.duration + 3.0)
+                self.save_wavfile(data, rate, self.get_wavfile_path())
+                break

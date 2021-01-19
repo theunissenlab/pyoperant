@@ -492,8 +492,8 @@ class AudioInput(BaseIO):
                                           *args,
                                           **kwargs)
 
-        assert hasattr(self.interface, '_record')
-        assert hasattr(self.interface, '_stop_record')
+        assert hasattr(self.interface, 'listen')
+        assert hasattr(self.interface, '_get_last_recorded_data')
         self.key = 0
         self._recordings = {}
         self.config()
@@ -513,21 +513,5 @@ class AudioInput(BaseIO):
         logger.debug("Configuring AudioInput to receive on interface % s" % self.interface)
         return self.interface._config_read_analog(**self.params)
 
-    def start_recording(self, event=None, duration=None, dest=None):
-        self.key += 1
-        self._recordings[self.key] = self.interface._record(
-            event=event,
-            duration=duration,
-            dest=dest,
-            **self.params
-        )
-        return self.key
-
-    def stop_recording(self, event=None, key=None):
-        thread, quit_signal = self._recordings[key]
-        return self.interface._stop_record(
-            event=event,
-            thread=thread,
-            quit_signal=quit_signal,
-            **self.params
-        )
+    def get_recorded_data(self, duration):
+        return self.interface._get_last_recorded_data(duration)
