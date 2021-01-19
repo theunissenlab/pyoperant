@@ -149,6 +149,10 @@ class PeckingTest(GoNoGoInterrupt):
             self.this_trial.reward = False  # maybe use reward_event here instead?
             self.start_immediately = True
 
+    def end(self):
+        self.panel.mic.input.interface.stop()
+        super(PeckingTest, self).end()
+
 
 class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
     """A go no-go interruption experiment combined with occasional playbacks
@@ -264,9 +268,6 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
                 utils.wait(1.0)  # Record for one extra second after the end of the stim
-                data, rate = self.panel.mic.record_last(self.this_trial.stimulus.duration + 2.0)
+                data, rate = self.panel.mic.record_last(self.this_trial.stimulus.duration + 3.0)
                 self.save_wavfile(data, rate, self.get_wavfile_path())
                 break
-
-    def end(self):
-        super(PeckingAndPlaybackTest, self).end()

@@ -97,7 +97,7 @@ class RingBuffer(object):
         Return an array representation of data in the buffer (copied
         so that it can be modified without affecting the buffer)
     """
-    def __init__(self, maxlen=0, n_channels=None):
+    def __init__(self, maxlen=0, n_channels=None, dtype=None):
         """Initialize circular buffer
 
         Params
@@ -108,12 +108,18 @@ class RingBuffer(object):
             Enforce number of channels in buffer. If None,
             will choose the number of channels the first time .extend()
             is called.
+        dtype : type (default None)
+            Enforce datatype of buffer. If None,
+            will choose the datatype the first time .extend()
+            is called.
         """
         self.maxlen = maxlen
 
         # Keep track of original value for if the buffer is cleared
         self._init_n_channels = n_channels
         self.n_channels = n_channels
+        self._init_dtype = dtype
+        self.dtype = dtype
 
         # Data is stored in a numpy array of maxlen even when
         # the amount of data is smaller than that. When data
@@ -123,7 +129,7 @@ class RingBuffer(object):
         self._length = 0  # The amount of samples of real data in the buffer
         self._start = 0  # Starting index where data should be read from
         self._overlapping = False  # Has the data wrapper around the end
-        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0))
+        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0), dtype=self.dtype or np.int16)
 
     def __len__(self):
         return self._length
@@ -144,8 +150,9 @@ class RingBuffer(object):
         self._length = 0
         self._start = 0
         self.n_channels = self._init_n_channels
+        self.dtype = self._init_dtype
         self._overlapping = False
-        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0))
+        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0), dtype=self.dtype or np.int16)
 
     def extend(self, data):
         """Extend the buffer with a 2D (samples x channels) array
@@ -157,6 +164,10 @@ class RingBuffer(object):
 
         # Reshape 1-D signals to be 2D with one channel
         to_add = np.array(data)
+        if self.dtype is None:
+            self.dtype = to_add.dtype
+            self._ringbuffer = self._ringbuffer.astype(self.dtype)
+
         if to_add.ndim == 1:
             to_add = to_add[:, None]
 
@@ -168,7 +179,7 @@ class RingBuffer(object):
             ))
 
         if self._length == 0 and self.n_channels is None:
-            self._ringbuffer = np.zeros((self.maxlen, to_add.shape[1]))
+            self._ringbuffer = np.zeros((self.maxlen, to_add.shape[1]), dtype=self.dtype)
             self.n_channels = to_add.shape[1]
 
         if len(to_add) > self.maxlen:
@@ -193,7 +204,7 @@ class RingBuffer(object):
             self._start = self._write_at
             self._overlapping = True
 
-    def get_last(self, n_samples):
+    def read_last(self, n_samples):
         return self.to_array()[-n_samples:]
 
 
@@ -223,6 +234,7 @@ class PyAudioInterface(base_.AudioInterface):
         self.play_thread = None
         self._playback_quit_signal = None
         self._playback_lock = threading.Lock()
+        self.capture_thread = None
 
         if is_mic:
             self.record_queue = queue.Queue()
@@ -253,13 +265,9 @@ class PyAudioInterface(base_.AudioInterface):
         if not sys.is_finalizing():
             logger.debug("Closing device")
 
+        self.stop()
         self.abort_signal.set()
         self.abort_signal = threading.Event()
-
-        try:
-            self.rec_stream.close()
-        except:
-            pass
 
         try:
             self.wf.close()
@@ -296,37 +304,40 @@ class PyAudioInterface(base_.AudioInterface):
             logging.error("IOError on opening pa stream. Not sure why")
             raise
 
-        data = wf.readframes(chunk)
-
-        last_time = time.time()
-        dts = []
-        while data != b"":
-            if quit_signal.is_set() or abort_signal.is_set():
-                logger.debug("Attempting to close pyaudio stream on interrupt")
-                stream.close()
-                self._playback_lock.release()
-                logger.debug("Stream closed")
-                break
-
-            dtype, max_val = self._get_dtype(wf)
-            data = np.frombuffer(data, dtype)
-
-            if self.gain:
-                data = data * np.power(10.0, self.gain / 20.0)
-
-            data = data.astype(dtype).tostring()
-            stream.write(data)
+        try:
             data = wf.readframes(chunk)
-            dts.append(time.time() - last_time)
+
             last_time = time.time()
-        else:  # This block is run when the while condition becomes False (not on break)
-            logger.debug("Attempting to close pyaudio stream on file complete")
-            # Extra wait at the end to make sure the whole file is played through.
-            # Don't want to hold the lock for too long though.
-            utils.wait(0.1)
-            stream.close()
+            dts = []
+            while data != b"":
+                if quit_signal.is_set() or abort_signal.is_set():
+                    logger.debug("Attempting to close pyaudio stream on interrupt")
+                    stream.close()
+                    logger.debug("Stream closed")
+                    break
+
+                dtype, max_val = self._get_dtype(wf)
+                data = np.frombuffer(data, dtype)
+
+                if self.gain:
+                    data = data * np.power(10.0, self.gain / 20.0)
+
+                data = data.astype(dtype).tostring()
+                stream.write(data)
+                data = wf.readframes(chunk)
+                dts.append(time.time() - last_time)
+                last_time = time.time()
+            else:  # This block is run when the while condition becomes False (not on break)
+                logger.debug("Attempting to close pyaudio stream on file complete")
+                # Extra wait at the end to make sure the whole file is played through.
+                # Don't want to hold the lock for too long though.
+                # utils.wait(0.3)
+                # stream.close()
+                logger.debug("Stream closed")
+        except:
+            raise
+        finally:
             self._playback_lock.release()
-            logger.debug("Stream closed")
 
         logger.debug("mean={:.6f} median={:.6f} max={:.6f}".format(
             np.mean(dts),
@@ -370,13 +381,28 @@ class PyAudioInterface(base_.AudioInterface):
 
     def rec_callback(self, in_data, frame_count, time_info, status):
         data = np.frombuffer(in_data, dtype=np.int16)
-        self.record_buffer.extend(data)
+        self.record_queue.put(data)
         return in_data, pyaudio.paContinue
+
+    def _consume_mic_input(self):
+        while not self.abort_signal.is_set():
+            try:
+                item = self.record_queue.get(timeout=1.0)
+            except queue.Empty:
+                break
+            self.record_buffer.extend(item)
+
+    def stop(self):
+        try:
+            self.rec_stream.close()
+        except:
+            pass
 
     def listen(self):
         """Start microphone recording stream
         """
-        self.rec_stream = self.pa.open(format=pyaudio.paInt16,
+        self.rec_stream = self.pa.open(
+            format=pyaudio.paInt16,
             channels=1,
             rate=self.rate,
             input_device_index=self.device_index,
@@ -388,11 +414,13 @@ class PyAudioInterface(base_.AudioInterface):
 
         # Set up buffer to store last 10 seconds of audio at all times
         self.record_buffer = RingBuffer(int(self.rate) * 10)
+        self.capture_thread = threading.Thread(target=self._consume_mic_input)
+        self.capture_thread.start()
 
     def _get_last_recorded_data(self, duration):
         """Get last few seconds of recorded audio input from mic buffer"""
         n_samples = int(duration * self.rate)
-        return self.record_buffer.get_last(n_samples)
+        return self.record_buffer.read_last(n_samples), self.rate
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         if self._playback_quit_signal:
