@@ -261,7 +261,7 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         # If this is a block we are supposed to record, save the last whatever seconds
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
-                utils.wait(1.0)  # Record for one extra second after the end of the stim
-                data, rate = self.panel.mic.record_last(time.time() - self._stim_start_time)
+                utils.wait(2.0)  # Record for two extra second after the end of the stim and 6 seconds before stim onset
+                data, rate = self.panel.mic.record_last(8.0 + (time.time() - self._stim_start_time))
                 self.save_wavfile(data, rate, self.get_wavfile_path())
                 break

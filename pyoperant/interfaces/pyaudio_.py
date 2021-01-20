@@ -384,7 +384,7 @@ class PyAudioInterface(base_.AudioInterface):
         )
 
         # Set up buffer to store last 10 seconds of audio at all times
-        self.record_buffer = RingBuffer(int(self.rate) * 10)
+        self.record_buffer = RingBuffer(int(self.rate) * 20)
 
     def _get_last_recorded_data(self, duration):
         """Get last few seconds of recorded audio input from mic buffer"""
