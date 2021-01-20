@@ -231,6 +231,7 @@ class PyAudioInterface(base_.AudioInterface):
         self.abort_signal = threading.Event()
         self.open()
         self.gain = None
+        self.stream = None
         self.play_thread = None
         self._playback_quit_signal = None
         self._playback_lock = threading.Lock()
@@ -288,27 +289,21 @@ class PyAudioInterface(base_.AudioInterface):
         """
         chunk = 1024
 
-        try:
-            stream = self.pa.open(
-               format=self.pa.get_format_from_width(wf.getsampwidth()),
-               channels=wf.getnchannels(),
-               rate=wf.getframerate(),
-               output=True,
-               frames_per_buffer=chunk,
-               output_device_index=self.device_index,
-            )
-        except IOError:
-            logging.error("IOError on opening pa stream. Not sure why")
-            raise
+        self.stream = self.pa.open(
+           format=self.pa.get_format_from_width(wf.getsampwidth()),
+           channels=wf.getnchannels(),
+           rate=wf.getframerate(),
+           output=True,
+           frames_per_buffer=chunk,
+           output_device_index=self.device_index,
+        )
 
         data = wf.readframes(chunk)
 
-        last_time = time.time()
-        dts = []
         while data != b"":
             if quit_signal.is_set() or abort_signal.is_set():
                 logger.debug("Attempting to close pyaudio stream on interrupt")
-                stream.close()
+                self.stream.close()
                 self._playback_lock.release()
                 logger.debug("Stream closed")
                 break
@@ -320,13 +315,10 @@ class PyAudioInterface(base_.AudioInterface):
                 data = data * np.power(10.0, self.gain / 20.0)
 
             data = data.astype(dtype).tostring()
-            stream.write(data)
+            self.stream.write(data)
             data = wf.readframes(chunk)
-            dts.append(time.time() - last_time)
-            last_time = time.time()
         else:  # This block is run when the while condition becomes False (not on break)
             logger.debug("Attempting to close pyaudio stream on file complete")
-            # stream.close()
             self._playback_lock.release()
             logger.debug("Stream closed")
 
@@ -347,7 +339,7 @@ class PyAudioInterface(base_.AudioInterface):
         """
         new_quit_signal = threading.Event()
 
-        new_thread = threading.Thread(
+        self.play_thread = threading.Thread(
             target=self._run_play,
             kwargs={
                 "wf": self.wf,
@@ -355,7 +347,6 @@ class PyAudioInterface(base_.AudioInterface):
                 "abort_signal": self.abort_signal
             }
         )
-        self.play_thread = new_thread
 
         if start:
             self._play_wav(event=event)
@@ -395,7 +386,7 @@ class PyAudioInterface(base_.AudioInterface):
         if self._playback_quit_signal:
             self._playback_quit_signal.set()
 
-        # We msut wait for the previous stream to be closed
+        # We must wait for the previous stream to be closed
         self._playback_lock.acquire()
 
         logger.debug("Queueing wavfile %s" % wav_file)

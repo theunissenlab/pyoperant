@@ -262,6 +262,6 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         for block_name in self.record_audio:
             if self.record_audio[block_name] and self.this_trial.block == self.block_queue.blocks[block_name]:
                 utils.wait(2.0)  # Record for two extra second after the end of the stim and 6 seconds before stim onset
-                data, rate = self.panel.mic.record_last(8.0 + (time.time() - self._stim_start_time))
+                data, rate = self.panel.mic.record_last(6.0 + (time.time() - self._stim_start_time))
                 self.save_wavfile(data, rate, self.get_wavfile_path())
                 break
