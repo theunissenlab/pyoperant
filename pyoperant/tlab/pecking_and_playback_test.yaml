@@ -94,4 +94,10 @@ log_handlers:
     #     credentials: none
     #     secure: none
     #     level: !!python/name:logging.ERROR
+    # # Setting up the slack logging requires getting a slack oauth token and finding the ID of the channel you want to post to
+    # slack:
+    #     token: ""
+    #     annotation: "Box X"
+    #     channel: ""
+    #     level: !!python/name:logging.ERROR
 ...

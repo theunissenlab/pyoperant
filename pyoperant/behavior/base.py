@@ -198,6 +198,9 @@ class BaseExp(object):
         if "email" in log_handlers:
             self.add_email_handler(**log_handlers["email"])
 
+        if "slack" in log_handlers:
+            self.add_slack_handler(**log_handlers["slack"])
+
         # Experiment descriptors
         self.name = name
         self.description = description
@@ -450,6 +453,44 @@ class BaseExp(object):
             root_logger.setLevel(level)
         root_logger.addHandler(email_handler)
         logger.debug("Email handler added to %s with level %d" % (",".join(email_handler.toaddrs), level))
+
+    def add_slack_handler(self, channel=None, token=None, annotation=None, timeout=1, level=logging.ERROR, **kwargs):
+        """Add an email handler to the root logger using configurations from the
+        config file.
+
+        Parameters
+        ----------
+        channel: string
+            The slack channel id to post to
+        token: string
+            The slack API token
+        annotation: string
+            Optional additional identifier to help debugging
+        level: logging level
+            The level of log messages that should send an email. Probably want
+            logging.ERROR or something similarly high
+        """
+        try:
+            from pyoperant.log_handlers import SlackLogHandler
+            slack_handler = SlackLogHandler(
+                channel=channel,
+                annotation=annotation,
+                token=token,
+                timeout=timeout
+                format="%(annotation)s%(emoji)s *%(levelname)s* at %(asctime)s [%(name)s]\n%(message)s"
+            )
+        except:
+            print("Something wrong with setting up logging to slack; "
+                    "Check error or remove slack logging from config")
+            raise
+
+        slack_handler.setLevel(level)
+        root_logger = logging.getLogger()
+        # Make sure the root logger's level is not too high
+        if root_logger.level > level:
+            root_logger.setLevel(level)
+        root_logger.addHandler(slack_handler)
+        logger.debug("Slack handler added with level: {} to channel {}".format(level, channel))
 
     # Scheduling methods
     def check_sleep_schedule(self):
