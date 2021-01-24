@@ -50,6 +50,9 @@ class SlackLogHandler(logging.Handler):
     def _make_content(self, record):
         record.annotation = "{} ".format(self.annotation) if self.annotation else ""
         record.emoji = self.EMOJIS[record.levelno]
+        # Another handler may modify record.exc_text directly, preventing SlackFormatter
+        # from having a chance to. Clear it out so the formatting can be applied.
+        record.exc_text = None
         content = {
             "text": self.format(record),
             "username": self.username,

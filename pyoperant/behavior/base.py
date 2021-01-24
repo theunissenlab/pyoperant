@@ -476,7 +476,7 @@ class BaseExp(object):
                 channel=channel,
                 annotation=annotation,
                 token=token,
-                timeout=timeout
+                timeout=timeout,
                 format="%(annotation)s%(emoji)s *%(levelname)s* at %(asctime)s [%(name)s]\n%(message)s"
             )
         except:
