@@ -204,6 +204,9 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
 
         self.inactivity_before_playback = inactivity_before_playback
         self.inactivity_before_playback_restart = inactivity_before_playback_restart
+
+        # Will not start playbacks unless subject has started pecking
+        self._delay_before_first_playback = inactivity_before_playback_restart
         self.last_playback_reset = dt.datetime.now()
 
         super().__init__(*args, block_queue=block_queue, **kwargs)
@@ -226,7 +229,11 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
                     since_reset = self.get_seconds_from_last_reset()
                     timeout = self.inactivity_before_playback_restart - since_reset
                 else:
-                    timeout = np.random.uniform(*self.inactivity_before_playback)
+                    # The first timeout should be extra long to let the experimenter get set up
+                    # and the subject can calm down. Once the bird has started pecking, playbacks
+                    # will occur at normal intervals.
+                    timeout = self._delay_before_first_playback + np.random.uniform(*self.inactivity_before_playback)
+                    self._delay_before_first_playback = 0
                 response = self.panel.response_port.poll(timeout=timeout)
             else:
                 response = True

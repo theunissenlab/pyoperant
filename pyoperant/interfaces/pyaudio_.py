@@ -1,10 +1,12 @@
 
 from ctypes import *
 from contextlib import contextmanager
+import collections
 import os
 import logging
-import sys
 import queue
+import signal
+import sys
 import threading
 import numpy as np
 import scipy.io.wavfile
@@ -17,11 +19,53 @@ from pyoperant import InterfaceError, utils
 from pyoperant.events import events
 
 
+logger = logging.getLogger(__name__)
+
+
 REC_CHUNK = 1024
 
+FauxTb = collections.namedtuple("FauxTb", ["tb_frame", "tb_lineno", "tb_next"])
+_exception_queue = queue.Queue()
 
-logger = logging.getLogger(__name__)
-# TODO: Clean up _stop_wav logging changes
+
+# Calling abort_program from a child thread (e.g. the pyaudio playback thread)
+# will have _handle_exit_signal be called in the main thread. This
+# will log the error and traceback, and exit with code 1 so that
+# it is clear that the program has crashed. Otherwise, errors in the# pyaudio playback won't actually force the program to crash...
+def _handle_exit_signal(*args, **kwargs):
+    try:
+        message, exc_info = _exception_queue.get_nowait()
+    except queue.Empty:
+        logger.exception("An exit signal was received but no traceback was found.")
+    else:
+        logger.error("An exit signal was received from a child thread: {}".format(message), exc_info=exc_info)
+    finally:
+        sys.exit(1)
+
+
+signal.signal(signal.SIGUSR1, _handle_exit_signal)
+
+
+def abort_program(message):
+    """Send a kill signal to the program so that it will crash
+    """
+    _exception_queue.put((message, full_exc_info(shift=1)))
+    os.kill(os.getpid(), signal.SIGUSR1)
+
+
+def full_exc_info(shift=0):
+    """Like sys.exc_info, but includes the full traceback.
+
+    Excludes 'shift' frames from the traceback
+
+    Great solution copied from https://stackoverflow.com/a/58105833
+    """
+    t, v, tb = sys.exc_info()
+    f = sys._getframe(2 + shift)
+    while f is not None:
+        tb = FauxTb(f, f.f_lineno, tb)
+        f = f.f_back
+    return t, v, tb
 
 
 def get_audio_devices():
@@ -222,7 +266,7 @@ class PyAudioInterface(base_.AudioInterface):
 
     """
     def __init__(self, device_name="default", is_mic=False, *args, **kwargs):
-        super().__init__(*args,**kwargs)
+        super().__init__(*args, **kwargs)
         self.device_name = device_name
         self.device_index = None
         self.wf = None
@@ -244,9 +288,10 @@ class PyAudioInterface(base_.AudioInterface):
     def set_gain(self, gain):
         self.gain = gain
 
-    def open(self):
-        with log_alsa_warnings():
-            self.pa = pyaudio.PyAudio()
+    def _refresh_device_index(self):
+        """Use this on pyaudio errors to check if the device index hsa changed
+        """
+        old_device_index = self.device_index
         for index in range(self.pa.get_device_count()):
             if self.device_name == self.pa.get_device_info_by_index(index)['name']:
                 logger.debug("Found device %s at index %d" % (self.device_name, index))
@@ -254,9 +299,16 @@ class PyAudioInterface(base_.AudioInterface):
                 break
             else:
                 self.device_index = None
+        if old_device_index != self.device_index:
+            logger.debug("Device index changed from {} to {}".format(old_device_index, self.device_index))
+
         if self.device_index == None:
             raise InterfaceError('could not find pyaudio device %s' % (self.device_name))
 
+    def open(self):
+        with log_alsa_warnings():
+            self.pa = pyaudio.PyAudio()
+        self._refresh_device_index()
         self.device_info = self.pa.get_device_info_by_index(self.device_index)
         self.rate = int(self.device_info["defaultSampleRate"])
 
@@ -272,6 +324,43 @@ class PyAudioInterface(base_.AudioInterface):
         except AttributeError:
             self.wf = None
         self.pa.terminate()
+
+    def _try_hard_to_open_stream(self, wf, chunk, retries=10, wait=0.5):
+        errors = []
+        for attempt in range(retries + 1):
+            try:
+                stream = self.pa.open(
+                    format=self.pa.get_format_from_width(wf.getsampwidth()),
+                    channels=wf.getnchannels(),
+                    rate=wf.getframerate(),
+                    output=True,
+                    frames_per_buffer=chunk,
+                    output_device_index=self.device_index,
+                )
+            except Exception as e:
+                errors.append(e)
+                # Log as INFO here, log as a warning later if it recovers, or close the program if it doesn't
+                logger.info("Error opening pyaudio stream: {} {}. Existing stream: {}. Closing stream and retrying {} more times".format(
+                    type(e),
+                    e,
+                    self.stream,
+                    retries - attempt
+                ))
+                if self.stream:
+                    self.stream.close()
+                if attempt == retries:
+                    abort_program("Could not open pyaudio stream after {} tries. Closing program.".format(retries))
+                    raise
+                time.sleep(wait)
+            else:
+                if attempt > 0:
+                    logger.warning("Playback stream errored but recovered after {}/{} retries. {}: {}".format(
+                        attempt,
+                        retries,
+                        type(errors[0]),
+                        errors[0]
+                    ))
+                return stream
 
     def _run_play(self, wf=None, quit_signal=None, abort_signal=None):
         """Function to play back a sound
@@ -289,14 +378,12 @@ class PyAudioInterface(base_.AudioInterface):
         """
         chunk = 1024
 
-        self.stream = self.pa.open(
-           format=self.pa.get_format_from_width(wf.getsampwidth()),
-           channels=wf.getnchannels(),
-           rate=wf.getframerate(),
-           output=True,
-           frames_per_buffer=chunk,
-           output_device_index=self.device_index,
-        )
+        if self.stream:
+            self.stream.stop_stream()
+            self.stream.close()
+
+        # Try at most for 1 seconds to open stream
+        self.stream = self._try_hard_to_open_stream(wf, chunk, retries=5, wait=0.2)
 
         data = wf.readframes(chunk)
 
@@ -320,7 +407,8 @@ class PyAudioInterface(base_.AudioInterface):
         else:  # This block is run when the while condition becomes False (not on break)
             logger.debug("Attempting to close pyaudio stream on file complete")
             self._playback_lock.release()
-            logger.debug("Stream closed")
+            # Closing the stream here can cut off a pretty significant portion of the playback
+            # Instead we let the stream finish and close itself.
 
         try:
             wf.close()
