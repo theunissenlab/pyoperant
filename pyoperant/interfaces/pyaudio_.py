@@ -325,43 +325,6 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf = None
         self.pa.terminate()
 
-    def _try_hard_to_open_stream(self, wf, chunk, retries=10, wait=0.5):
-        errors = []
-        for attempt in range(retries + 1):
-            try:
-                stream = self.pa.open(
-                    format=self.pa.get_format_from_width(wf.getsampwidth()),
-                    channels=wf.getnchannels(),
-                    rate=wf.getframerate(),
-                    output=True,
-                    frames_per_buffer=chunk,
-                    output_device_index=self.device_index,
-                )
-            except Exception as e:
-                errors.append(e)
-                # Log as INFO here, log as a warning later if it recovers, or close the program if it doesn't
-                logger.info("Error opening pyaudio stream: {} {}. Existing stream: {}. Closing stream and retrying {} more times".format(
-                    type(e),
-                    e,
-                    self.stream,
-                    retries - attempt
-                ))
-                if self.stream:
-                    self.stream.close()
-                if attempt == retries:
-                    abort_program("Could not open pyaudio stream after {} tries. Closing program.".format(retries))
-                    raise
-                time.sleep(wait)
-            else:
-                if attempt > 0:
-                    logger.warning("Playback stream errored but recovered after {}/{} retries. {}: {}".format(
-                        attempt,
-                        retries,
-                        type(errors[0]),
-                        errors[0]
-                    ))
-                return stream
-
     def _run_play(self, wf=None, quit_signal=None, abort_signal=None):
         """Function to play back a sound
 
@@ -382,8 +345,18 @@ class PyAudioInterface(base_.AudioInterface):
             self.stream.stop_stream()
             self.stream.close()
 
-        # Try at most for 1 seconds to open stream
-        self.stream = self._try_hard_to_open_stream(wf, chunk, retries=5, wait=0.2)
+        try:
+            self.stream = self.pa.open(
+                format=self.pa.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                frames_per_buffer=chunk,
+                output_device_index=self.device_index,
+            )
+        except:
+            abort_program("Could not open pyaudio stream for playback. Closing program.")
+            raise
 
         data = wf.readframes(chunk)
 

@@ -594,6 +594,9 @@ class Speaker(BaseComponent):
         while self.output.interface.play_thread.is_alive():
             utils.wait(0.01)
 
+    def is_done(self):
+        return not self.output.interface.play_thread.is_alive()
+
 
 class Microphone(BaseComponent):
     """ Class which holds information about a microphone
