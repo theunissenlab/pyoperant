@@ -9,6 +9,8 @@ from pyoperant import utils, components, local, hwio, configure
 from pyoperant import ComponentError, InterfaceError, EndExperiment
 from pyoperant import states, subjects, queues
 from pyoperant.events import events, EventLogHandler
+from pyoperant.behavior import shape
+import random
 import pyoperant.blocks as blocks_
 import pyoperant.trials as trials_
 
@@ -625,12 +627,41 @@ class BaseExp(object):
         """ Closes out the sessions
         """
 
-        self.panel.idle()
-        self.session_end_time = dt.datetime.now()
-        logger.info("Finishing session %d at %s" % (self.session_id, self.session_end_time.ctime()))
-        if self.session_id >= self.num_sessions:
-            logger.info("Finished all sessions.")
-            self.end()
+        for attr in self.req_panel_attr:
+            assert hasattr(self.panel,attr)
+        self.panel_reset()
+        self.save()
+        self.init_summary()
+
+        self.log.info('%s: running %s with parameters in %s' % (self.name,
+                                                                self.__class__.__name__,
+                                                                self.snapshot_f,
+                                                                )
+                      )
+        if self.parameters['shape']:
+                self.shaper.run_shape(self.parameters['shape'])
+        while True: #is this while necessary
+            utils.run_state_machine(start_in='idle',
+                                    error_state='idle',
+                                    error_callback=self.log_error_callback,
+                                    idle=self._run_idle,
+                                    sleep=self._run_sleep,
+                                    session=self._run_session,
+                                    free_food_block=self._free_food
+                                    )
+
+    def _run_idle(self):
+        self.log.debug('Starting _run_idle')
+        if self.check_light_schedule() == False:
+            return 'sleep'
+        elif self.check_session_schedule():
+            if self._check_free_food_block(): return 'free_food_block'
+            return 'session'
+        else:
+            self.panel_reset()
+            self.log.debug('idling...')
+            utils.wait(self.parameters['idle_poll_interval'])
+            return 'idle'
 
     # Defining the different trial states. If any of these are not needed by the behavior, just don't define them in your subclass
     def trial_pre(self):
@@ -651,8 +682,86 @@ class BaseExp(object):
     def response_main(self):
         pass
 
+    # session
     def response_post(self):
         pass
+
+    def _wait_block(self, t_min, t_max, next_state):
+        def temp():
+            if t_min == t_max:
+                t = t_max
+            else:
+                t = random.randrange(t_min, t_max)
+            utils.wait(t)
+            return next_state
+
+        return temp
+
+    def _check_free_food_block(self):
+        """ Checks if it is currently a free food block
+        """
+        if 'free_food_schedule' in self.parameters:
+            if utils.check_time(self.parameters['free_food_schedule']):
+                return True
+
+    def free_food_pre(self):
+        self.log.debug('Buffet starting.')
+        return 'main'
+
+    def free_food_main(self):
+        """ reset expal parameters for the next day """
+        self.log.debug('Starting Free Food main.')
+        utils.run_state_machine(start_in='wait',
+                                error_state='wait',
+                                error_callback=self.log_error_callback,
+                                wait=self._wait_block(5, 5, 'food'),
+                                food=self.deliver_free_food(10, 'checker'),
+                                checker=self.food_checker('wait')
+                                )
+
+        if not utils.check_time(self.parameters['free_food_schedule']):
+            return 'post'
+        else:
+            return 'main'
+
+    def food_checker(self, next_state):
+        #should we still be giving free food?
+        def temp():
+            if 'free_food_schedule' in self.parameters:
+                if utils.check_time(self.parameters['free_food_schedule']):
+                    return next_state
+            return None
+        return temp
+
+    def free_food_post(self):
+        self.log.debug('Free food over.')
+        return None
+
+    def _free_food(self):
+        self.log.debug('Starting _free_food')
+        utils.run_state_machine(start_in='pre',
+                                error_state='post',
+                                error_callback=self.log_error_callback,
+                                pre=self.free_food_pre,
+                                main=self.free_food_main,
+                                post=self.free_food_post)
+        return 'idle'
+
+    def deliver_free_food(self, value, next_state):
+        """ reward function with no frills
+        """
+
+        def temp():
+            self.log.debug('Doling out some free food.')
+
+            try:
+                reward_event = self.panel.reward(value=value)
+            except:
+                self.log.warning("Hopper did not drop on free food")
+
+            return next_state
+
+        return temp
 
     def reward_pre(self):
         pass

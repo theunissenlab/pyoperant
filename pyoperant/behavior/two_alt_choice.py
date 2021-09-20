@@ -22,10 +22,10 @@ class TwoAltChoiceExp(base.BaseExp):
     trials : list
         all of the trials that have run
     shaper : Shaper
-        the protocol for shaping 
-    parameters : dict 
+        the protocol for shaping
+    parameters : dict
         all additional parameters for the experiment
-    data_csv : string 
+    data_csv : string
         path to csv file to save data
     reinf_sched : object
         does logic on reinforcement
@@ -110,7 +110,7 @@ class TwoAltChoiceExp(base.BaseExp):
     def make_data_csv(self):
         """ Create the csv file to save trial data
 
-        This creates a new csv file at experiment.data_csv and writes a header row 
+        This creates a new csv file at experiment.data_csv and writes a header row
         with the fields in experiment.fields_to_save
         """
         with open(self.data_csv, 'w') as data_fh:
@@ -132,19 +132,22 @@ class TwoAltChoiceExp(base.BaseExp):
         """ Runs before the session starts
 
         For each stimulus class, if there is a component associated with it, that
-        component is mapped onto `experiment.class_assoc[class]`. For example, 
-        if the `left` port is registered with the 'L' class, you can access the response 
+        component is mapped onto `experiment.class_assoc[class]`. For example,
+        if the `left` port is registered with the 'L' class, you can access the response
         port through `experiment.class_assoc['L']`.
 
         """
-        assert len(self.parameters['classes'])==2, 'does not currently support > 2 classes'
-
-        self.class_assoc = {}
+        
+        self.response_ports = {}
         for class_, class_params in self.parameters['classes'].items():
             try:
-                self.class_assoc[class_] = getattr(self.panel,class_params['component'])
+                port_name = class_params['component']
+                port = getattr(self.panel,port_name)
+                self.response_ports.update({port_name:port})
             except KeyError:
                 pass
+
+
 
         return 'main'
 
@@ -194,16 +197,16 @@ class TwoAltChoiceExp(base.BaseExp):
                 elif q_type=='mixedDblStaircase':
                     dbl_staircases = [queues.DoubleStaircaseReinforced(stims) for stims in blk['stim_lists']]
                     self.trial_q = queues.MixedAdaptiveQueue.load(os.path.join(self.parameters['experiment_path'], 'persistentQ.pkl'), dbl_staircases)
-                try: 
+                try:
                     run_trial_queue()
                 except EndSession:
                     return 'post'
 
             self.session_q = None
-        
+
         else:
             self.log.info('continuing last session')
-            try: 
+            try:
                 run_trial_queue()
             except EndSession:
                 return 'post'
@@ -276,7 +279,7 @@ class TwoAltChoiceExp(base.BaseExp):
 
         Returns
         -------
-        stim, epochs : Event, list 
+        stim, epochs : Event, list
 
 
         """
@@ -363,6 +366,7 @@ class TwoAltChoiceExp(base.BaseExp):
 
         if self.check_session_schedule()==False:
             raise EndSession
+        if self._check_free_food_block(): return 'free_food_block'
 
     def stimulus_pre(self):
         # wait for bird to peck
@@ -378,6 +382,14 @@ class TwoAltChoiceExp(base.BaseExp):
                 self.panel.speaker.stop()
                 self.update_adaptive_queue(presented=False)
                 raise EndSession
+            elif 'free_food_schedule' in self.parameters:
+                if utils.check_time(self.parameters['free_food_schedule']):
+                    self.panel.center.off()
+                    self.panel.speaker.stop()
+                    self.update_adaptive_queue(presented=False)
+                    raise EndSession
+                else:
+                    trial_time = self.panel.center.poll(timeout=60.0)
             else:
                 trial_time = self.panel.center.poll(timeout=60.0)
 
@@ -430,7 +442,7 @@ class TwoAltChoiceExp(base.BaseExp):
 
     #response flow
     def response_pre(self):
-        for class_, port in self.class_assoc.items():
+        for port_name, port in self.response_ports.items():
             port.on()
         self.log.debug('waiting for response')
 
@@ -444,13 +456,13 @@ class TwoAltChoiceExp(base.BaseExp):
                 self.this_trial.response = 'none'
                 self.log.info('no response')
                 return
-            for class_, port in self.class_assoc.items():
+            for port_name, port in self.response_ports.items():
                 if port.status():
                     self.this_trial.rt = (dt.datetime.now() - response_start).total_seconds()
                     self.panel.speaker.stop()
-                    self.this_trial.response = class_
+                    self.this_trial.response = port_name
                     self.summary['responses'] += 1
-                    response_event = utils.Event(name=self.parameters['classes'][class_]['component'],
+                    response_event = utils.Event(name=port_name,
                                                  label='peck',
                                                  time=elapsed_time,
                                                  )
@@ -460,7 +472,7 @@ class TwoAltChoiceExp(base.BaseExp):
             utils.wait(.015)
 
     def response_post(self):
-        for class_, port in self.class_assoc.items():
+        for port_name, port in self.response_ports.items():
             port.off()
 
     ## consequence flow
@@ -469,7 +481,7 @@ class TwoAltChoiceExp(base.BaseExp):
 
     def consequence_main(self):
         # correct trial
-        if self.this_trial.response==self.this_trial.class_:
+        if self.this_trial.response==self.parameters['classes'][self.this_trial.class_]['component']:
             self.this_trial.correct = True
 
             if self.parameters['reinforcement']['secondary']:

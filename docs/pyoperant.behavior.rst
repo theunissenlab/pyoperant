@@ -1,16 +1,16 @@
 pyoperant.behavior package
-========================
+==========================
 
 Submodules
 ----------
 
 .. toctree::
 
-   pyoperant.behavior.base
-   pyoperant.behavior.lights
-   pyoperant.behavior.shape
-   pyoperant.behavior.three_ac_matching
-   pyoperant.behavior.two_alt_choice
+   base <pyoperant.behavior.base>
+   lights <pyoperant.behavior.lights>
+   shape <pyoperant.behavior.shape>
+   three_ac_matching <pyoperant.behavior.three_ac_matching>
+   two_alt_choice <pyoperant.behavior.two_alt_choice>
 
 Module contents
 ---------------

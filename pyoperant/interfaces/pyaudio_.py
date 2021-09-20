@@ -14,6 +14,7 @@ import time
 
 import pyaudio
 import wave
+import logging
 from pyoperant.interfaces import base_
 from pyoperant import InterfaceError, utils
 from pyoperant.events import events
@@ -320,9 +321,15 @@ class PyAudioInterface(base_.AudioInterface):
         self.abort_signal = threading.Event()
 
         try:
+            self.stream.close()
+        except AttributeError:
+            self.stream = None
+        try:
             self.wf.close()
         except AttributeError:
             self.wf = None
+        except IOError:
+            logging.getLogger().error("IOError on _stop_wav")
         self.pa.terminate()
 
     def _try_hard_to_open_stream(self, wf, chunk, retries=10, wait=0.5):
@@ -497,6 +504,14 @@ class PyAudioInterface(base_.AudioInterface):
     def _stop_wav(self, event=None, **kwargs):
         self._playback_quit_signal.set()
         self.play_thread = None
+        try:
+            self.stream.close()
+        except AttributeError:
+            self.stream = None
+        try:
+            self.wf.close()
+        except AttributeError:
+            self.wf = None
 
 
 from unittest import mock

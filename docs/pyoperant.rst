@@ -6,25 +6,24 @@ Subpackages
 
 .. toctree::
 
-    pyoperant.interfaces
-    pyoperant.behavior
+    The Interfaces Subpackage <pyoperant.interfaces>
+    The Behavior Subpackage <pyoperant.behavior>
 
-Submodules
+Modules
 ----------
 
 .. toctree::
 
-   pyoperant.behavior
-   pyoperant.components
-   pyoperant.errors
-   pyoperant.hwio
-   pyoperant.local
-   pyoperant.local_vogel
-   pyoperant.local_zog
-   pyoperant.panels
-   pyoperant.queues
-   pyoperant.reinf
-   pyoperant.utils
+   components <pyoperant.components>
+   errors <pyoperant.errors>
+   hwio <pyoperant.hwio>
+   local <pyoperant.local>
+   local_vogel <pyoperant.local_vogel>
+   local_zog <pyoperant.local_zog>
+   panels <pyoperant.panels>
+   queues <pyoperant.queues>
+   reinf <pyoperant.reinf>
+   utils <pyoperant.utils>
 
 Module contents
 ---------------
