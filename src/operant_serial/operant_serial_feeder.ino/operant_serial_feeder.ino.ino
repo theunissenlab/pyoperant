@@ -5,9 +5,9 @@ int ioPort = 0;
 
 
 // Feeder variables
-const int LED_PIN = 3;
-const int EN_PIN = 6;
-const int STEP_PIN = 7;
+const int LED_PORT = 9;
+const int EN_PIN = 0;
+const int STEP_PIN = 1;
 const int DIR_PIN = 2;
 const int FEEDER_IOPORT=10; // what chan is sent for feeder
 
@@ -18,22 +18,12 @@ int step_counter = -1;
 const int STEPS_PER_CYCLE = 200; // one revolutions
 const int MS_DELAY_TIME = 2; // ideal time between steps
 //const int feed
+
+#include <TMC2208Stepper.h>             // Include library
+TMC2208Stepper driver = TMC2208Stepper(&Serial);  // Create driver and use
+
 void setup()
 {
-  
-
-   // myTime = millis();
-  //set pin modes
-  pinMode(EN_PIN, OUTPUT);
-  digitalWrite(EN_PIN, HIGH); //deactivate driver (LOW active)
-  pinMode(DIR_PIN, OUTPUT);
-  digitalWrite(DIR_PIN, LOW); //LOW or HIGH
-  pinMode(STEP_PIN, OUTPUT);
-  digitalWrite(STEP_PIN, LOW);
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW); //LOW or HIGH
-
-  digitalWrite(EN_PIN, HIGH); //de-activate driver
   // start serial port at the specified baud rate
   Serial.begin(baudRate);
   while (!Serial) {
@@ -43,7 +33,18 @@ void setup()
 }
 
 void loop()
-{ 
+{
+  myTime = millis();
+  //set pin modes
+  pinMode(EN_PIN, OUTPUT);
+  digitalWrite(EN_PIN, HIGH); //deactivate driver (LOW active)
+  pinMode(DIR_PIN, OUTPUT);
+  digitalWrite(DIR_PIN, LOW); //LOW or HIGH
+  pinMode(STEP_PIN, OUTPUT);
+  digitalWrite(STEP_PIN, LOW);
+
+  digitalWrite(EN_PIN, HIGH); //de-activate driver
+  
   // All serial communications should be two bytes long
   // The first byte specifies the port to act on
   // The second byte specifies the action to take
@@ -58,37 +59,31 @@ void loop()
   if (Serial.available() >= 2) {
     // get incoming two bytes:
     Serial.readBytes(ioBytes, 2);
-    Serial.println("I received: ");
-    Serial.println(ioBytes[0], DEC);
-    Serial.println(ioBytes[1], DEC);
+    //Serial.println("I received: ");
+    //Serial.println(ioBytes[0], DEC);
+    //Serial.println(ioBytes[1], DEC);
     // Extract the specified port
     ioPort = (int) ioBytes[0];
 
     // Hijack ioport corresponding to feeder
     if (ioPort == FEEDER_IOPORT){
-      switch ((int) ioBytes[1]) {
-        case 0:
-          Serial.write(true); // not sure what to do here
-          break;
-        case 1:
-          Serial.println("START");
-          // Start feeding
-          step_counter = STEPS_PER_CYCLE;
-          digitalWrite(LED_PIN,HIGH);
-          digitalWrite(EN_PIN, LOW); //activate driver
-          nextStep = millis() + delay_time;
-          break;
-        case 2:
-          Serial.println("STOP");
-          // STOP FEEDING
-          step_counter = -1;
-          digitalWrite(LED_PIN,LOW);
-          digitalWrite(EN_PIN, HIGH); //de-activate driver
-          break;
-      }
+      case 0:
+        Serial.write(true); // not sure what to do here
+        break;
+      case 1:
+        // Start feeding
+        step_counter = STEPS_PER_CYCLE;
+        digitalWrite(LED_PIN,HIGH);
+        digitalWrite(EN_PIN, LOW); //activate driver
+        break;
+      case 2:
+        // STOP FEEDING
+        step_counter = -1;
+        digitalWrite(LED_PIN,LOW);
+        digitalWrite(EN_PIN, HIGH); //de-activate driver
+        break;
     }
     else {
-      Serial.println("IM IN HERE");
       // Switch case on the specified action
       switch ((int) ioBytes[1]) {
         case 0: // Read an input
@@ -115,19 +110,11 @@ void loop()
   }
   // if there are steps to do, do them
   if (step_counter > 0){
-    if (millis() > nextStep){
-      Serial.println("GO");
-      digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
-      step_counter--;
-      nextStep = millis() + delay_time;
-    }
+    digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
+    step_counter--;
   }
-
-  //digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
-  //delay(2);
-  //else{
-  //  Serial.print("HIGH");
-  //    digitalWrite(EN_PIN, HIGH); //de-activate driver
-  //}
+  else{
+      digitalWrite(EN_PIN, HIGH); //de-activate driver
+  }
   //delay(10); // Should probably move to a non-delay based spacing.
 }
