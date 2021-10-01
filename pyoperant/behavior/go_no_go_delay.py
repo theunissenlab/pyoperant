@@ -97,7 +97,7 @@ class GoNoGoInterrupt(base.BaseExp):
                       'correct',
                       'rt',
                       'reward',
-                      'max_wait',
+                      'max_wait'
                       ]
 
     def __init__(self, reward_value=12, *args, **kwargs):
@@ -106,7 +106,8 @@ class GoNoGoInterrupt(base.BaseExp):
         self.start_immediately = False
         self.reward_value = reward_value
         self.pre_response_delay = self.parameters.get("pre_response_delay", .5)
-        self.stim_time_cutoff = self.parameters.get("stim_time_cutoff", -1)
+        self.stim_time_cutoff = self.parameters.get("stim_time_cutoff", None)
+
     def trial_iter(self, block_queue):
         for self.this_block in self.block_queue:
             self.this_block.experiment = self
@@ -131,12 +132,14 @@ class GoNoGoInterrupt(base.BaseExp):
     def stimulus_main(self):
         """ Queue the stimulus and play it back """
 
-        logger.info("Trial %d - %s - %s - %s" % (
+        logger.info("Trial %d - %s - %s - %s - %s" % (
                                      self.this_trial.index,
                                      self.this_trial.time.strftime("%H:%M:%S"),
                                      self.this_trial.condition.name,
-                                     self.this_trial.stimulus.name))
-        self.panel.speaker.queue(self.this_trial.stimulus.file_origin)
+                                     self.this_trial.stimulus.name,
+                                     self.stim_time_cutoff))
+        self.panel.speaker.queue(self.this_trial.stimulus.file_origin,
+                                 cutoff_time=self.stim_time_cutoff)
         self.this_trial.annotate(stimulus_time=dt.datetime.now())
         self.panel.speaker.play()
 
@@ -149,20 +152,17 @@ class GoNoGoInterrupt(base.BaseExp):
         self.this_trial.n_early_pecks = -1
         while datetime.datetime.now() < end_time:
             secs = (end_time-datetime.datetime.now()).total_seconds()
-            logger.info("Polling for %s seconds" %secs)
+            logger.debug("Polling for %s seconds" %secs)
             self.panel.response_port.poll(secs)
             self.this_trial.n_early_pecks += 1
         self.panel.response_port.on()
-        logger.info("Received %s early pecks during the delay period"%self.this_trial.n_early_pecks)
+        self.this_trial.annotate(delay_period_pecks=self.this_trial.n_early_pecks)
+        logger.debug("Received %s early pecks during the delay period"%self.this_trial.n_early_pecks)
 
     def response_main(self):
         """ Poll for an interruption for the duration of the stimulus. """
         # Would be better to just pol till stimulus is actually done
         s_wait = self.this_trial.stimulus.duration - self.pre_response_delay
-        if self.stim_time_cutoff > 0:
-            s_wait = self.stim_time_cutoff
-        else:
-            s_wait = self.this_trial.stimulus.duration - self.pre_response_delay
         self.this_trial.response_time = self.panel.response_port.poll(s_wait)
 
         logger.debug("Received peck or timeout. Stopping playback")

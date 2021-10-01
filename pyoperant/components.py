@@ -574,11 +574,11 @@ class Speaker(BaseComponent):
     def set_gain(self, gain):
         self.gain = gain
 
-    def queue(self, wav_filename, metadata=None):
+    def queue(self, wav_filename, cutoff_time=None, metadata=None):
 
         self.event["action"] = "queue"
         self.event["metadata"] = metadata
-        return self.output.queue(wav_filename, event=self.event)
+        return self.output.queue(wav_filename, cutoff_time, event=self.event)
 
     def play(self):
 

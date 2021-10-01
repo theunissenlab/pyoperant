@@ -113,15 +113,28 @@ class Panel125(panels.BasePanel):
         # Translations
         self.response_port = self.peck_port
 
-    def reward(self, value=12.0):
-        """Raise feeder for some time"""
-        self.feeder.up()
-        peck_time = self.peck_port.poll(value)
-        self.feeder.down()
-        if peck_time is not None:
-            return peck_time
+    def reward(self, value=12.0,and_poll=True):
+        if and_poll:
+            """Raise feeder for some time"""
+            logger.debug("About to call feeder.up()")
+            self.feeder.up()
+            logger.debug("Called feeder.up()")
+            peck_time = self.peck_port.poll(value)
+            self.feeder.down()
+            if peck_time is not None:
+                return peck_time
 
-        return True
+            return True
+        else:
+            """Raise feeder for some time"""
+            self.response_port.off()
+            logger.debug("About to call feeder.up()")
+            self.feeder.up()
+            logger.debug("Called feeder.up()")
+            utils.wait(value)
+            self.feeder.down()
+            self.response_port.on()
+            return True
 
     def punish(self):
         pass

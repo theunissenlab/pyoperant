@@ -204,6 +204,32 @@ class StimulusConditionWav(StimulusCondition):
 
         return AuditoryStimulus.from_wav(wavfile)
 
+class StimulusConditionWavPair(StimulusCondition):
+    def __init__(self, file_path_A, file_path_B, match, *args, **kwargs):
+
+        self.sub_conditions = []
+        self.match = match
+        self.sub_conditions.append(StimulusConditionWav(file_path=file_path_A,name="StimA"))
+        self.sub_conditions.append(StimulusConditionWav(file_path=file_path_B,name="StimB"))
+        files = []
+        for c in self.sub_conditions:
+            files.extend(c.files)
+        super(StimulusConditionWavPair, self).__init__(files=files,file_pattern="*.wav",
+                                                *args, **kwargs)
+    def setup_stimuli_list(self):
+        return
+
+    def get(self):
+        """ Gets an AuditoryStimulus instance from a chosen .wav file """
+        if self.match:
+            # first pick a stimulus
+            stim = random.choice(self.sub_conditions)
+            # return two stims from that condition
+            return[ stim.get(), stim.get() ]
+        else:
+            [stimA,stimB] = random.sample(self.sub_conditions,2)
+            print(stimA.name,stimB.name)
+            return [stimA.get(), stimB.get(), stimA.get()]
 
 class DynamicStimulusCondition(StimulusCondition):
     """Stimulus condition that always pulls from updated directory
