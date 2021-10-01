@@ -62,7 +62,7 @@ class Panel125(panels.BasePanel):
     _default_sound_file = "/data/pecking_test/stimuli/debugging/test_song.wav"
     _default_box_sound_file = "/data/pecking_test/stimuli/debugging/test_song.wav"
 
-    def __init__(self, arduino=None, speaker=None, mic=None, name=None, *args, **kwargs):
+    def __init__(self, arduino=None, speaker=None, mic=None, name=None, baud_rate=19200, *args, **kwargs):
         super(Panel125, self).__init__(self, *args, **kwargs)
         if arduino is None:
             raise ValueError("Arduino serial port not specified or configured.")
@@ -73,7 +73,7 @@ class Panel125(panels.BasePanel):
 
         # Initialize interfaces
         arduino = arduino_.ArduinoInterface(device_name=arduino,
-                                            baud_rate=19200)
+                                            baud_rate=baud_rate)
         headphone_out = pyaudio_.PyAudioInterface(device_name=speaker)
 
         # Create input and output for the pecking key
@@ -264,6 +264,20 @@ class Panel125(panels.BasePanel):
         return dest
 
 
+class Box1(Panel125):
+
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box2_sample.wav"
+    defaults = dict(
+        name="Box 1",
+        arduino="/dev/ttyArduino_box1",
+        speaker="speaker6",
+        baud_rate=115200
+    )
+
+    def __init__(self, *args, **kwargs):
+        super(Box1, self).__init__(*args, **{**self.defaults, **kwargs})
+
+
 class Box2(Panel125):
 
     _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box2_sample.wav"
@@ -335,6 +349,7 @@ class BoxVirtual(Panel125):
 
 
 PANELS = {
+    "1": Box1,
     "2": Box2,
     "3": Box3,
     "5": Box5,
