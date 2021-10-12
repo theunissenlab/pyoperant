@@ -216,7 +216,8 @@ class DynamicStimulusCondition(StimulusCondition):
     """
     def __init__(self, *args, **kwargs):
         self.file_access_counter = defaultdict(int)
-        self._last_selected = set()
+        self._last_selected = []
+        self._index_list = []
         super(DynamicStimulusCondition, self).__init__(*args, **kwargs)
 
     def setup_stimuli_list(self):
@@ -232,7 +233,7 @@ class DynamicStimulusCondition(StimulusCondition):
 
         if not len(valid_files):
             raise StimulusMissing
-        if selected is not None and selected not in valid_files:
+        if isinstance(selected, basestring) and selected not in valid_files:
             raise StimulusMissing
 
         if selected is None:
@@ -241,15 +242,15 @@ class DynamicStimulusCondition(StimulusCondition):
         elif isinstance(selected, basestring):
             file_selected = selected
         else:
-            if len(self._index_list) and self._last_selected and set(selected) == self._last_selected:
+            if len(self._index_list) and self._last_selected and selected == self._last_selected:
                 pass
             else:
-                self._index_list = np.arange(len(selected))
+                self._index_list = range(len(selected))
                 random.shuffle(self._index_list)
 
-            self._last_selected = set(selected)
+            self._last_selected = selected
             index = self._index_list.pop(0)
-            file_selected = self.selected[index]
+            file_selected = selected[index]
 
         logger.debug("Selected file {}".format(file_selected))
         return file_selected

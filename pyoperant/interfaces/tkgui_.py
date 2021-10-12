@@ -197,7 +197,7 @@ class GUIThread(threading.Thread):
         )
 
         self.stim_label = tk.Label(stim_control_frame, textvariable=self.next_stim_label_text)
-        self.stim_listbox = tk.Listbox(stim_select_frame, selectmode=tk.SINGLE)
+        self.stim_listbox = tk.Listbox(stim_select_frame, selectmode=tk.MULTIPLE)
         self.stim_listbox.config(width=0)
         self.stim_listbox.bind('<<ListboxSelect>>', self.on_stim_select)
 
@@ -295,7 +295,10 @@ class GUIThread(threading.Thread):
                 for index in listbox.curselection()
             ]
         self.state["selected_stim"] = full_path
-        self.update_queued_label("{} stims".format(len(full_path)))
+        if full_path is not None:
+            self.update_queued_label("{} stims".format(len(full_path)))
+        else:
+            self.update_queued_label("Whatever")
 
     def update_queued_label(self, stim_path):
         """Update the label showing the next stim to be played"""
@@ -346,7 +349,10 @@ class GUIThread(threading.Thread):
             self._periodic_loop_after = self.root.after(500, self._periodic_loop)
             return
 
-        self.update_queued_label(full_path)
+        if not isinstance(full_path, basestring):
+            self.update_queued_label("{} stimuli selected".format(len(full_path)))
+        else:
+            self.update_queued_label(full_path)
 
         for msg in list(self.event_queues["status_msg"].queue):
             if isinstance(msg, basestring):
