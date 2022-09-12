@@ -50,7 +50,7 @@ class ChronicPlayback(record_trials.RecordTrialsMixin, simple_stimulus_playback.
 
         # Get the md5 hash
         md5 = hashlib.md5()
-        with open(self.this_trial.stimulus.file_origin, "r") as fh:
+        with open(self.this_trial.stimulus.file_origin, "rb") as fh:
             md5.update(fh.read())
         md5 = str(md5.hexdigest())
 

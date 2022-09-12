@@ -232,12 +232,12 @@ class EventInterfaceHandler(EventHandler, hwio.BooleanOutput):
                 metadata_array = np.fromstring(event["metadata"],
                                                dtype=np.uint16).astype(np.uint8)[:self.metadata_bytes]
             except TypeError:
-                metadata_array = np.array(map(ord,
-                                              event["metadata"].ljust(self.metadata_bytes)[:self.metadata_bytes]),
+                metadata_array = np.array(list(map(ord,
+                                              event["metadata"].ljust(self.metadata_bytes)[:self.metadata_bytes])),
                                           dtype=np.uint8)
 
         int8_array = np.zeros(nbytes, dtype="uint8")
-        int8_array[:self.name_bytes] = map(ord, event["name"].ljust(self.name_bytes)[:self.name_bytes])
+        int8_array[:self.name_bytes] = list(map(ord, event["name"].ljust(self.name_bytes)[:self.name_bytes]))
         int8_array[self.name_bytes:self.name_bytes + self.action_bytes] = map(ord, event["action"].ljust(self.action_bytes)[:self.action_bytes])
         int8_array[self.name_bytes + self.action_bytes:] = metadata_array
 
@@ -333,16 +333,16 @@ class EventDToAHandler(EventHandler):
 
         trim = lambda ss, l: ss.ljust(l)[:l]
         # Set up int8 arrays where strings are converted to integers using ord
-        name_array = np.array(map(ord, trim(event["name"], self.name_bytes)),
+        name_array = np.array(list(map(ord, trim(event["name"], self.name_bytes))),
                               dtype=np.uint8)
-        action_array = np.array(map(ord, trim(event["action"],
-                                              self.action_bytes)),
+        action_array = np.array(list(map(ord, trim(event["action"],
+                                              self.action_bytes))),
                                 dtype=np.uint8)
 
         # Add the metadata array if a value was passed
         if event["metadata"] is not None:
-            metadata_array = np.array(map(ord, trim(event["metadata"],
-                                                    self.metadata_bytes)),
+            metadata_array = np.array(list(map(ord, trim(event["metadata"],
+                                                    self.metadata_bytes))),
                                       dtype=np.uint8)
         else:
             metadata_array = np.array([], dtype=np.uint8)
