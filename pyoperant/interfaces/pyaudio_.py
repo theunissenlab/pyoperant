@@ -41,16 +41,19 @@ def _handle_exit_signal(*args, **kwargs):
         logger.error("An exit signal was received from a child thread: {}".format(message), exc_info=exc_info)
     finally:
         sys.exit(1)
+# Fencing SIGUSR1 for windows build
+if sys.platform[:3] != 'win':
+    kill_sig = signal.SIGUSR1
+else:
+    kill_sig = signal.SIGTERM
 
-
-signal.signal(signal.SIGUSR1, _handle_exit_signal)
-
+signal.signal(kill_sig, _handle_exit_signal)
 
 def abort_program(message):
     """Send a kill signal to the program so that it will crash
     """
     _exception_queue.put((message, full_exc_info(shift=1)))
-    os.kill(os.getpid(), signal.SIGUSR1)
+    os.kill(os.getpid(), kill_sig)
 
 
 def full_exc_info(shift=0):
