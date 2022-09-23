@@ -43,17 +43,27 @@ def test_box(box, file_):
 
 
 def test_microphone(box, play_audio=True, duration=1.0, dest=None):
+    """Tests microphone with Arudino interface patched to not accidentally ruin a running test"""
     from pyoperant.tlab.local_tlab import PANELS
+    from unittest import mock
+    from pyoperant.interfaces import arduino_
+
     Box = PANELS.get(box)
-    box = Box()
-    box.test_mic_recording(play_audio=play_audio, duration=duration, dest=dest)
+    with mock.patch("pyoperant.interfaces.arduino_.ArduinoInterface", arduino_.MockArduinoInterface):
+        box = Box()
+        box.test_mic_recording(play_audio=play_audio, duration=duration, dest=dest)
 
 
 def test_audio(box, file_, repeat=False):
+    """Tests audio with the Arduino interface patched to not accidentally take over a running test"""
     from pyoperant.tlab.local_tlab import PANELS
+    from unittest import mock
+    from pyoperant.interfaces import arduino_
+
     Box = PANELS.get(box)
-    box = Box()
-    box.test_audio(filename=file_, repeat=repeat)
+    with mock.patch("pyoperant.interfaces.arduino_.ArduinoInterface", arduino_.MockArduinoInterface):
+        box = Box()
+        box.test_audio(filename=file_, repeat=repeat)
 
 
 def shell(box):
@@ -125,12 +135,23 @@ def prepare_todays_experiment(
         parameters["experimenter"]["name"] = experimenter
     if output_dir:
         parameters["experiment_path"] = output_dir
-
     # Instantiate the test conditions
-    conditions = {"pecking": []}
-    for condition_dict in parameters["conditions"]["pecking"]:
-        Condition = get_object_from_string(condition_dict["class"])
-        conditions["pecking"].append(Condition(file_path=condition_dict["file_path"]))
+    if 'pecking' in parameters['conditions']:
+        conditions = {"pecking": []}
+        for condition_dict in parameters["conditions"]["pecking"]:
+            Condition = get_object_from_string(condition_dict["class"])
+            conditions["pecking"].append(Condition(file_path=condition_dict["file_path"]))
+    if 'DMTS' in parameters['conditions']:
+        conditions = {"DMTS": []}
+        for condition_dict in parameters["conditions"]["DMTS"]:
+            Condition = get_object_from_string(condition_dict["class"])
+            conditions["DMTS"].append(Condition(file_path_A=condition_dict["file_path_A"],
+                                                file_path_B=condition_dict["file_path_B"],
+                                                match=condition_dict['match'],
+                                                name=condition_dict['name'],
+                                                is_rewarded=condition_dict['is_rewarded'],
+                                                response=condition_dict['response']))
+
 
     if preference_test:
         conditions["playback"] = []
@@ -179,7 +200,9 @@ def run(
     """
     from pyoperant.tlab.pecking_test import (
         PeckingAndPlaybackTest,
-        PeckingTest
+        PeckingTest,
+        PeckingDelayTest,
+        PeckingDMTS
     )
 
     parameters = prepare_todays_experiment(
@@ -211,7 +234,13 @@ def run(
         if isinstance(parameters["conditions"], dict) and "pecking" in parameters["conditions"]:
             parameters["conditions"] = parameters["conditions"]["pecking"]
             parameters["queue_parameters"] = parameters["queue_parameters"]["pecking"]
-        exp = PeckingTest(**parameters)
+            exp = PeckingTest(**parameters)
+        if isinstance(parameters["conditions"], dict) and "DMTS" in parameters["conditions"]:
+            parameters["conditions"] = parameters["conditions"]["DMTS"]
+            parameters["queue_parameters"] = parameters["queue_parameters"]["DMTS"]
+            exp = PeckingDMTS(**parameters)
+        #exp = PeckingTest(**parameters)
+
 
     exp.run()
 

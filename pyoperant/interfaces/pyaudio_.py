@@ -328,44 +328,7 @@ class PyAudioInterface(base_.AudioInterface):
             self.wf = None
         self.pa.terminate()
 
-    def _try_hard_to_open_stream(self, wf, chunk, retries=10, wait=0.5):
-        errors = []
-        for attempt in range(retries + 1):
-            try:
-                stream = self.pa.open(
-                    format=self.pa.get_format_from_width(wf.getsampwidth()),
-                    channels=wf.getnchannels(),
-                    rate=wf.getframerate(),
-                    output=True,
-                    frames_per_buffer=chunk,
-                    output_device_index=self.device_index,
-                )
-            except Exception as e:
-                errors.append(e)
-                # Log as INFO here, log as a warning later if it recovers, or close the program if it doesn't
-                logger.info("Error opening pyaudio stream: {} {}. Existing stream: {}. Closing stream and retrying {} more times".format(
-                    type(e),
-                    e,
-                    self.stream,
-                    retries - attempt
-                ))
-                if self.stream:
-                    self.stream.close()
-                if attempt == retries:
-                    abort_program("Could not open pyaudio stream after {} tries. Closing program.".format(retries))
-                    raise
-                time.sleep(wait)
-            else:
-                if attempt > 0:
-                    logger.warning("Playback stream errored but recovered after {}/{} retries. {}: {}".format(
-                        attempt,
-                        retries,
-                        type(errors[0]),
-                        errors[0]
-                    ))
-                return stream
-
-    def _run_play(self, wf=None, quit_signal=None, abort_signal=None):
+    def _run_play(self, wf=None, quit_signal=None, abort_signal=None, cutoff_time = None):
         """Function to play back a sound
 
         Plays back a sound in chunks of 512 until the wav file is completed
@@ -385,12 +348,27 @@ class PyAudioInterface(base_.AudioInterface):
             self.stream.stop_stream()
             self.stream.close()
 
-        # Try at most for 1 seconds to open stream
-        self.stream = self._try_hard_to_open_stream(wf, chunk, retries=5, wait=0.2)
+        try:
+            self.stream = self.pa.open(
+                format=self.pa.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                frames_per_buffer=chunk,
+                output_device_index=self.device_index,
+            )
+        except:
+            abort_program("Could not open pyaudio stream for playback. Closing program.")
+            raise
 
         data = wf.readframes(chunk)
 
-        while data != b"":
+        if cutoff_time == None:
+            cutoff_frames = 0
+        else:
+            cutoff_frames = cutoff_time * wf.getframerate()
+
+        while (data != b"") and ((cutoff_time is None) or (cutoff_frames >= 0)):
             if quit_signal.is_set() or abort_signal.is_set():
                 logger.debug("Attempting to close pyaudio stream on interrupt")
                 self.stream.close()
@@ -407,6 +385,7 @@ class PyAudioInterface(base_.AudioInterface):
             data = data.astype(dtype).tostring()
             self.stream.write(data)
             data = wf.readframes(chunk)
+            cutoff_frames -= chunk
         else:  # This block is run when the while condition becomes False (not on break)
             logger.debug("Attempting to close pyaudio stream on file complete")
             self._playback_lock.release()
@@ -429,13 +408,13 @@ class PyAudioInterface(base_.AudioInterface):
             Evenet for logging purposes
         """
         new_quit_signal = threading.Event()
-
         self.play_thread = threading.Thread(
             target=self._run_play,
             kwargs={
                 "wf": self.wf,
                 "quit_signal": new_quit_signal,
-                "abort_signal": self.abort_signal
+                "abort_signal": self.abort_signal,
+                "cutoff_time": kwargs.get("cutoff_time",None)
             }
         )
 
@@ -473,19 +452,20 @@ class PyAudioInterface(base_.AudioInterface):
         n_samples = int(duration * self.rate)
         return self.record_buffer.read_last(n_samples), self.rate
 
-    def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
+    def _queue_wav(self, wav_file, start=False, cutoff_time=None, event=None, **kwargs):
         if self._playback_quit_signal:
             self._playback_quit_signal.set()
 
         # We must wait for the previous stream to be closed
         self._playback_lock.acquire()
 
-        logger.debug("Queueing wavfile %s" % wav_file)
+        logger.debug("Queueing wavfile %s with cutoff time %s" % (wav_file,cutoff_time))
         self.wf = wave.open(wav_file)
         self.validate()
         self._playback_quit_signal = self._get_stream(
             start=start,
-            event=event
+            event=event,
+            cutoff_time = cutoff_time,
         )
 
     def _play_wav(self, event=None, gain=None, **kwargs):

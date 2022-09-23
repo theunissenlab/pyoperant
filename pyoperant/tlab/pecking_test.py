@@ -143,7 +143,7 @@ class PeckingTest(GoNoGoInterrupt):
         :return:
         """
         logger.info("Supplying reward for %3.2f seconds" % self.reward_value)
-        reward_event = self.panel.reward(value=self.reward_value)
+        reward_event = self.panel.reward(value=self.reward_value) # First possible lag
         # There was a response during the reward period
         if isinstance(reward_event, dt.datetime):
             self.this_trial.reward = False  # maybe use reward_event here instead?
@@ -272,3 +272,285 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
                 data, rate = self.panel.mic.record_last(6.0 + (time.time() - self._stim_start_time))
                 self.save_wavfile(data, rate, self.get_wavfile_path())
                 break
+
+
+
+class NoGoCondition(stimuli.StimulusConditionWav):
+    """ NoGo stimuli are rewarded if the subject does *not* respond (i.e.
+    No-Go stimuli).
+    """
+    def __init__(self, file_path="", recursive=False):
+        super(NoGoCondition, self).__init__(name="No-Go",
+                                                response=False,
+                                                is_rewarded=True,
+                                                is_punished=True,
+                                                file_path=file_path,
+                                                recursive=recursive)
+
+
+class GoCondition(stimuli.StimulusConditionWav):
+    """ Go stimuli are rewarded when the subject pecks
+    (i.e. Go stimuli)
+    """
+    def __init__(self, file_path="", recursive=False):
+        super(GoCondition, self).__init__(name="Go",
+                                                  response=True,
+                                                  is_rewarded=True,
+                                                  is_punished=True,
+                                                  file_path=file_path,
+                                                  recursive=recursive)
+
+
+class PeckingDelayTest(PeckingTest):
+    """A go no-go task with a forced choice after a set delay
+            |Stimulus|Delay|Response|Reward/Punish|
+    Parameters
+    ----------
+    block_queue: dict
+
+    Additional Parameters
+    ---------------------
+    TODO
+
+    For all other parameters, see pyoperant.behavior.base.BaseExp and
+    pyoperant.behavior.GoNoGoInterrupt and pyoperant.tlab.PeckingTest
+    """
+    def __init__(self, *args, **kwargs):
+        super(PeckingTest, self).__init__(*args, **kwargs)
+        self.stim_time = self.parameters.get("stim_time", None)
+        self.delay_time = self.parameters.get("delay_time", .5)
+        self.response_time = self.parameters.get("response_time", 2)
+        self.punish_file = self.parameters.get("punish_file",None)
+        self.punish_time = self.parameters.get("punish_time",2)
+        self.post_punish_delay = self.parameters.get("post_punish_delay",2)
+
+    def stimulus_main(self):
+        """ Queue the stimulus and play it back """
+        logger.info("Trial %d - %s - %s - %s - %s" % (
+                                     self.this_trial.index,
+                                     self.this_trial.time.strftime("%H:%M:%S"),
+                                     self.this_trial.condition.name,
+                                     self.this_trial.stimulus.name,
+                                     self.stim_time))
+        self.panel.speaker.queue(self.this_trial.stimulus.file_origin,
+                                 cutoff_time=self.stim_time)
+        self.this_trial.annotate(stimulus_time=dt.datetime.now())
+        self.panel.speaker.play()
+
+    def response_pre(self):
+        """Wait the delay period before waiting for a response"""
+        # hard code wait time to 2 s
+        self.panel.response_port.off()
+        # listen for pecks to record if they are pecking in the delay
+        end_time = dt.datetime.now() + dt.timedelta(seconds=self.delay_time)
+        self.this_trial.n_early_pecks = -1
+        # this loop essentially waits until end time but counts the number of
+        # pecks received in that time for logging purposes
+        while dt.datetime.now() < end_time:
+            secs = (end_time-dt.datetime.now()).total_seconds()
+            logger.info("Polling for %s seconds" %secs)
+            self.panel.response_port.poll(secs)
+            self.this_trial.n_early_pecks += 1
+
+        self.this_trial.annotate(delay_period_pecks=self.this_trial.n_early_pecks)
+        logger.debug("Received %s early pecks during the delay period"%self.this_trial.n_early_pecks)
+
+        # put on the button light to indicate that the response phase as begun
+        self.panel.response_port.on()
+
+    def response_main(self):
+        """ Poll for an interruption for the duration of the response time. """
+        start_of_response = dt.datetime.now()
+        end_time = dt.datetime.now() + dt.timedelta(seconds=self.response_time)
+
+        # this loop essentially waits until end time but counts the number of
+        # pecks received in that time for logging purposes
+        self.this_trial.response_time = self.panel.response_port.poll(self.response_time)
+        while dt.datetime.now() < end_time:
+            secs = (end_time-dt.datetime.now()).total_seconds()
+            logger.info("Polling for response for %s seconds" %secs)
+            self.panel.response_port.poll(secs)
+
+        logger.debug("Received peck or timeout, providing reward or punishment.")
+
+        # Its janky, but allow the stimulus to finish...
+        # it does suppress pecks in this cleanup period.
+        # Thats why it would be better to link the polling period
+        # with the playback completion itself
+        if not self.this_trial.response_time:
+            self.panel.speaker.stop()
+            # _start = time.time()
+            # self.panel.speaker.let_finish()
+            # logger.debug("go_no_go_interrupt.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
+        else:
+            self.panel.speaker.stop()
+
+        logger.debug("Playback stopped")
+
+        if self.this_trial.response_time is None:
+            logger.info("No peck was received")
+            self.this_trial.response = False
+            self.start_immediately = False  # Next trial will poll for a response before beginning
+            self.this_trial.rt = np.nan
+        else:
+            logger.info("Peck was received")
+            self.this_trial.response = True
+            self.start_immediately = False  # Next trial will begin immediately
+            self.this_trial.rt = self.this_trial.response_time - start_of_response
+
+    def reward_main(self):
+        """ Reward a correct response"""
+        logger.info("Supplying reward for %3.2f seconds" % self.reward_value)
+        reward_event = self.panel.reward(value=self.reward_value, and_poll=False)
+
+    def punish_main(self):
+        """Punish incorrect response"""
+        self.panel.response_port.off()
+        logger.info("playing tone for punishment, no food")
+        if self.punish_file is not None:
+            self.panel.speaker.queue(self.punish_file, self.punish_time)
+            self.panel.speaker.play()
+        self.panel.speaker.let_finish()
+        utils.wait(self.post_punish_delay)
+        self.panel.response_port.on()
+
+
+class PeckingDMTS(PeckingTest):
+    """A delay match to category task
+
+    Stim A  --> delay --> Stim A --> peck --> Reward
+                    \           \--> wait --> Punish
+                     \--> Stim B --> peck --> Punish
+                                \--> wait --> Stim A --> peck --> Reward
+                                                    \--> wait --> Punish
+    Parameters
+    ----------
+    block_queue: dict
+
+    Additional Parameters
+    ---------------------
+    TODO
+
+    For all other parameters, see pyoperant.behavior.base.BaseExp and
+    pyoperant.behavior.GoNoGoInterrupt and pyoperant.tlab.PeckingTest
+    """
+    def __init__(self, *args, **kwargs):
+        super(PeckingTest, self).__init__(*args, **kwargs)
+        self.stim_time = self.parameters.get("stim_time", None)
+        self.delay_time = self.parameters.get("delay_time", .5)
+        self.response_time = self.parameters.get("response_time", 2)
+        self.punish_file = self.parameters.get("punish_file",None)
+        self.punish_time = self.parameters.get("punish_time",2)
+        self.post_punish_delay = self.parameters.get("post_punish_delay",2)
+
+    def trial_pre(self):
+        """ Initialize the trial and, if necessary, wait for a peck before
+        starting stimulus playback.
+        """
+        logger.debug("Starting trial #%d" % self.this_trial.index)
+        stimulus = self.this_trial.stimulus
+        condition = self.this_trial.condition.name
+        self.this_trial.annotate(stimulus_name=",".join([s.file_origin for s in stimulus]),
+                                 condition_name=condition)
+
+
+    def stimulus_main(self):
+        """ Queue the stimulus and play it back """
+        logger.info("Trial %d - %s - %s - %s - %s" % (
+                                     self.this_trial.index,
+                                     self.this_trial.time.strftime("%H:%M:%S"),
+                                     self.this_trial.condition.name,
+                                     "".join([s.name for s in self.this_trial.stimulus]),
+                                     self.stim_time))
+        # Turn off response port prior to playing audio and wait .5 sec
+        self.panel.response_port.off()
+        utils.wait(secs=.5)
+        self.panel.speaker.queue(self.this_trial.stimulus[0].file_origin,
+                                 cutoff_time=self.stim_time)
+        self.this_trial.annotate(stimulus_time=dt.datetime.now())
+        start = dt.datetime.now()
+        self.panel.speaker.play()
+        #stim_end = dt.datetime.now() + dt.timedelta(seconds=self.stim_time)
+        self.panel.speaker.let_finish()
+        logger.debug("Stim took %s time"%(dt.datetime.now() - start))
+
+        """Wait the delay period before waiting for a response"""
+        utils.wait(secs = self.delay_time)
+
+        # stim_end = dt.datetime.now() + dt.timedelta(seconds=self.stim_time)
+        #
+        # while dt.datetime.now() < stim_end:
+        #     secs = (stim_end-dt.datetime.now()).total_seconds()
+        #     logger.info("Polling for %s seconds" %secs)
+        #     self.panel.response_port.poll(secs)
+        #     self.this_trial.n_early_pecks += 1
+
+
+    def response_pre(self):
+        return
+
+    def response_main(self):
+        """ Poll for response, then play match if it was a no-match trial """
+        """Play the second stimulus"""
+        self.this_trial.response_time  = None
+        for stim in self.this_trial.stimulus[1:]:
+            # if you peck to a stim that isnt the last stim you lose
+            if self.this_trial.response_time is not None:
+                self.this_trial.response_time = None
+                break
+            self.panel.speaker.queue(stim.file_origin,
+                                 cutoff_time=self.stim_time)
+
+            start = dt.datetime.now()
+            self.panel.speaker.play()
+            #stim_end = dt.datetime.now() + dt.timedelta(seconds=self.stim_time)
+            self.panel.speaker.let_finish()
+            stim_end = dt.datetime.now()
+            logger.debug("Stim took %s time"%(stim_end - start))
+
+            # Poll for response
+            # put on the button light to indicate that the response phase as begun
+            self.panel.response_port.on()
+            start_of_response = dt.datetime.now()
+            end_time = dt.datetime.now() + dt.timedelta(seconds=self.response_time)
+
+            # this loop essentially waits until end time but counts the number of
+            # pecks received in that time for logging purposes
+            self.this_trial.response_time = None
+            self.this_trial.response_time = self.panel.response_port.poll(self.response_time)
+            while dt.datetime.now() < end_time:
+                secs = (end_time-dt.datetime.now()).total_seconds()
+                logger.info("Polling for response for %s seconds" %secs)
+                self.panel.response_port.poll(secs)
+            self.panel.speaker.stop()
+            self.panel.response_port.off()
+            utils.wait(secs=.5)
+            logger.debug("Received peck or timeout, providing reward or punishment.")
+
+
+        if self.this_trial.response_time is None:
+            logger.info("No peck was received in the appropriate time")
+            self.this_trial.response = False
+            self.start_immediately = False  # Next trial will poll for a response before beginning
+            self.this_trial.rt = np.nan
+        else:
+            logger.info("Peck was received")
+            self.this_trial.response = True
+            self.start_immediately = False  # Next trial will begin immediately
+            self.this_trial.rt = self.this_trial.response_time - start_of_response
+
+    def reward_main(self):
+        """ Reward a correct response"""
+        logger.info("Supplying reward for %3.2f seconds" % self.reward_value)
+        reward_event = self.panel.reward(value=self.reward_value, and_poll=False)
+
+    def punish_main(self):
+        """Punish incorrect response"""
+        #self.panel.response_port.off()
+        #logger.info("playing tone for punishment, no food")
+        #if self.punish_file is not None:
+        #    self.panel.speaker.queue(self.punish_file, self.punish_time)
+        #    self.panel.speaker.play()
+        #self.panel.speaker.let_finish()
+        #utils.wait(self.post_punish_delay)
+        #self.panel.response_port.on()

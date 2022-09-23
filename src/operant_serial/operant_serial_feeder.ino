@@ -58,9 +58,6 @@ void loop()
   if (Serial.available() >= 2) {
     // get incoming two bytes:
     Serial.readBytes(ioBytes, 2);
-    Serial.println("I received: ");
-    Serial.println(ioBytes[0], DEC);
-    Serial.println(ioBytes[1], DEC);
     // Extract the specified port
     ioPort = (int) ioBytes[0];
 
@@ -71,7 +68,6 @@ void loop()
           Serial.write(true); // not sure what to do here
           break;
         case 1:
-          Serial.println("START");
           // Start feeding
           step_counter = STEPS_PER_CYCLE;
           digitalWrite(LED_PIN,HIGH);
@@ -79,7 +75,6 @@ void loop()
           nextStep = millis() + delay_time;
           break;
         case 2:
-          Serial.println("STOP");
           // STOP FEEDING
           step_counter = -1;
           digitalWrite(LED_PIN,LOW);
@@ -88,7 +83,6 @@ void loop()
       }
     }
     else {
-      Serial.println("IM IN HERE");
       // Switch case on the specified action
       switch ((int) ioBytes[1]) {
         case 0: // Read an input
@@ -116,7 +110,6 @@ void loop()
   // if there are steps to do, do them
   if (step_counter > 0){
     if (millis() > nextStep){
-      Serial.println("GO");
       digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
       step_counter--;
       nextStep = millis() + delay_time;

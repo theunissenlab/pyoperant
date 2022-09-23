@@ -1,15 +1,16 @@
-
 #!/usr/bin/env python
 # PYTHON_ARGCOMPLETE_OK
 import os
 import glob
 import sys
 import tempfile
+import time
 import traceback
 import warnings
 import webbrowser
 
 import click
+import inspec
 
 
 box_required = [
@@ -36,7 +37,7 @@ class CLIResult:
     @staticmethod
     def warn(s):
         if colorama:
-            print("{}...WARNING{}: {}".format(colorama.Fore.ORANGE, colorama.Style.RESET_ALL, s))
+            print("{}...WARNING{}: {}".format(colorama.Fore.YELLOW, colorama.Style.RESET_ALL, s))
         else:
             print("...WARNING: {}".format(s))
 
@@ -89,6 +90,18 @@ def test_mic(box, duration, playback):
         dest = os.path.join(tempdir, "box{}_mic_test.wav".format(box))
         click.echo("...saving output to {}".format(dest))
         test_microphone(box, play_audio=playback, duration=duration, dest=dest)
+        click.echo("Printing spectrogram of {}".format(dest))
+        time.sleep(2.0)
+        inspec.show(
+            dest,
+            cmap="plasma",
+            show_spec=True,
+            show_amp=False,
+            width=0.9,
+            height=0.5,
+            min_freq=500,
+            max_freq=8000,
+        )
         click.prompt("Check audio output or type anything to continue")
 
 
@@ -379,8 +392,21 @@ def diagnostics(box, file_, raise_, full):
                 output_files.append(mic_dest)
 
             click.echo()
-            click.prompt("Microphone tests complete. Check or copy wav files in {} before proceeding "
-                    "(type anything to proceed)".format(tempdir))
+            click.echo("Microphone tests complete.")
+            time.sleep(2.0)
+            for filename in output_files:
+                click.echo("Printing spectrogram of {}".format(filename))
+                inspec.show(
+                    filename,
+                    cmap="plasma",
+                    show_spec=True,
+                    show_amp=False,
+                    width=0.7,
+                    height=0.3,
+                    min_freq=1000,
+                    max_freq=7000,
+                )
+            click.prompt("Check or copy wav files in {} before proceeding (type anything to proceed)".format(tempdir))
 
         if full:
             for box in boxes_succeeded:
