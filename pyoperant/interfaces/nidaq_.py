@@ -208,7 +208,7 @@ class NIDAQmxInterface(base_.BaseInterface):
         task.do_channels.add_do_chan(channel)
         task.timing.cfg_samp_clk_timing(rate=self.samplerate,
                                         source=self.clock_channel)
-        task.do_channels[channel].output_buf_size(0)
+        #task.do_channels[channel].output_buf_size(0)
         self.tasks[channel] = task
 
     def _read_bool(self, channel, invert=False, event=None, **kwargs):
@@ -552,6 +552,11 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
                                                 min_val=min_val,
                                                 max_val=max_val,
                                                 **kwargs)
+        if analog_event_handler is not None:
+            # TODO refactor... analog event handler is being thrown around a lot
+            # could remove it from the base interface or remove it from this interface but we should pick one and stick with it.
+            channel = make_pattern([channel,
+                                    analog_event_handler.channel])
         self.stream = self.device.tasks[channel]
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
@@ -600,8 +605,8 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
             Whether or not to immediately start playback
         """
 
-        self.stream.timing.cfg_samp_clk_timing(source=self.clock_channel,
-                                        rate=self.samplerate,
+        self.stream.timing.cfg_samp_clk_timing(source=self.device.clock_channel,
+                                        rate=self.device.samplerate,
                                         sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                                         samps_per_chan=self._wav_data.shape[1])
         # I think we might want to set layout='group_by_scan_number' in .write()

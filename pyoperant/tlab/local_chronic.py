@@ -46,7 +46,8 @@ class Panel131(panels.BasePanel):
             speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
             
             # TODO make sure that nidaq can handle event logging
-            #event_out = events.EventInterfaceHandler(interface=nidaq_device)
+            event_out = events.EventInterfaceHandler(interface=nidaq_device,params={'channel':'/Dev1/port0/line0'})
+            events.events.add_handler(event_out )
         else:
             speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
 
