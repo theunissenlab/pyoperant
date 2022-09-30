@@ -482,29 +482,23 @@ class NIDAQmxInterface(base_.BaseInterface):
         return True
 
 
-class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
+class NIDAQmxAudioInterface(base_.AudioInterface):
     """ Creates an interface for writing audio data to a NIDAQ card using
     the pylibnidaqmx library: https://github.com/imrehg/pylibnidaqmx
 
     Parameters
     ----------
-    device_name: string
-        the name of the device on your system (e.g. "Dev1")
+    device: NIDAQmxInterface instance that this audio interface
+        will write to
     samplerate: float
         the samplerate for the sound. If an external clock is
         specified, then this should be the maximum allowed samplerate.
-    clock_channel: string
-        the channel name for an external clock signal (e.g. "/Dev1/PFI0")
 
     Attributes
     ----------
+    device: NIDAQmxInterface instance
     device_name: string
         the name of the device on your system (e.g. "Dev1")
-    samplerate: float
-        the samplerate for the sound. If an external clock is
-        specified, then this should be the maximum allowed samplerate.
-    clock_channel: string
-        the channel name for an external clock signal (e.g. "/Dev1/PFI0")
     stream: nidaqmx.AnalogOutputTask
         the task used for writing out sound data
     wf: file handle
@@ -522,13 +516,12 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
     --------
 
     """
-    def __init__(self, device_name, samplerate=30000.0,
-                 clock_channel=None, *args, **kwargs):
+    def __init__(self, device, *args, **kwargs):
 
-        super(NIDAQmxAudioInterface, self).__init__(device_name=device_name,
-                                                    samplerate=samplerate,
-                                                    clock_channel=clock_channel,
+        super(NIDAQmxAudioInterface, self).__init__(device=device,
                                                     *args, **kwargs)
+        self.device = device
+        self.device_name = device.device_name
         self.stream = None
         self.wf = None
         self._wav_data = None
@@ -553,13 +546,13 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
         -------
         True if configuration succeeded
         """
-        super(NIDAQmxAudioInterface, self)._config_write_analog(
+        ret = self.device._config_write_analog(
                                                 channel,
                                                 analog_event_handler=analog_event_handler,
                                                 min_val=min_val,
                                                 max_val=max_val,
                                                 **kwargs)
-        self.stream = list(self.tasks.values())[0]
+        self.stream = self.device.tasks[channel]
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         """ Queue the wav file for playback
@@ -581,9 +574,9 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
         logger.debug("Queueing wavfile %s" % wav_file)
         self._wav_data = self._load_wav(wav_file)
 
-        if self._analog_event_handler is not None:
+        if self.device._analog_event_handler is not None:
             # Get the string of (scaled) bits from the event handler
-            bit_string = self._analog_event_handler.to_bit_sequence(event)
+            bit_string = self.device._analog_event_handler.to_bit_sequence(event)
 
             # multi-channel outputs need to be of shape nchannels x nsamples
             if len(self._wav_data.shape) == 1:
@@ -656,6 +649,8 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
              self.wf = None
 
         self._wav_data = None
+
+
 
 
 # make_pattern function from https://github.com/pearu/pylibnidaqmx/blob/master/nidaqmx/libnidaqmx.py#L274
