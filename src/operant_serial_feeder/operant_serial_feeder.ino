@@ -19,17 +19,20 @@ const int STEPS_PER_CYCLE = 200; // one revolutions
 const int MS_DELAY_TIME = 2; // ideal time between steps
 
 // Digital Pin Settings
-const int DIG1_PIN = 53;
+const int DIG1_PIN = 53; // TTL
 bool DIG1_ENABLED=true;
 unsigned long DIG1_NEXT = 0;
-const int DIG2_PIN = 51;
-bool DIG2_ENABLED=true;
-unsigned long DIG2_NEXT = 0;
-const int DIG3_PIN = 49;
-bool DIG3_ENABLED=true;
-unsigned long DIG3_NEXT = 0;
 const int TTL_PULSE_TIME = 500; // msec
 const int TTL_IPI = 2500; // 2.5 sec
+
+const int DIG2_PIN = 51;
+bool DIG2_ENABLED=true;
+const int DIG2_COPY_PIN = 4;
+
+const int DIG3_PIN = 49;
+bool DIG3_ENABLED=true;
+const int DIG3_COPY_PIN = 10;
+
 //const int feed
 void setup()
 {
@@ -116,14 +119,20 @@ void loop()
           digitalWrite(ioPort, LOW);        
           break;
         case 3: // Set a pin to OUTPUT
-          pinMode(ioPort, OUTPUT);
-          digitalWrite(ioPort, LOW);
+          if( ioPort != DIG1_PIN){ // Ignore DIG1_PIN
+            pinMode(ioPort, OUTPUT);
+            digitalWrite(ioPort, LOW);
+          }
           break;
         case 4: // Set a pin to INPUT
-          pinMode(ioPort, INPUT);
+          if( ioPort != DIG1_PIN){ // Ignore DIG1_PIN
+            pinMode(ioPort, INPUT);
+          }
           break;
         case 5: // Set a pin to INPUT_PULLUP
-          pinMode(ioPort, INPUT_PULLUP);
+          if( ioPort != DIG1_PIN){ // Ignore DIG1_PIN
+            pinMode(ioPort, INPUT_PULLUP);
+          }
           break;
       }
     }    
@@ -150,29 +159,11 @@ void loop()
   }
 
   if(DIG2_ENABLED){
-    if (millis() > DIG2_NEXT){
-      int val = digitalRead(DIG2_PIN);
-      digitalWrite(DIG2_PIN, !val);
-      if (val > 0){
-        DIG2_NEXT = millis() + TTL_IPI - TTL_PULSE_TIME;
-      }
-      else{
-        DIG2_NEXT =  millis() + 2*TTL_PULSE_TIME;
-      }
-    }
+    digitalWrite(DIG2_PIN, digitalRead(DIG2_COPY_PIN));
   }
 
   if(DIG3_ENABLED){
-    if (millis() > DIG3_NEXT){
-      int val = digitalRead(DIG3_PIN);
-      digitalWrite(DIG3_PIN, !val);
-      if (val > 0){
-        DIG3_NEXT = millis() + TTL_IPI - TTL_PULSE_TIME;
-      }
-      else{
-        DIG3_NEXT =  millis() + 3*TTL_PULSE_TIME;
-      }
-    }
+    digitalWrite(DIG3_PIN, digitalRead(DIG3_COPY_PIN));
   }
 
   //digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));

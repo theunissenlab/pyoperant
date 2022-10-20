@@ -1,6 +1,6 @@
 import datetime
 from pyoperant import hwio, utils, ComponentError
-
+from threading import Thread
 class BaseComponent(object):
     """Base class for physcal component
 
@@ -637,7 +637,28 @@ class TTLMonitor(BaseComponent):
     def __init__(self, input_, *args, **kwargs):
         super(TTLMonitor, self).__init__(*args,**kwargs)
         self.input = input_
-        
+        self.thread = Thread(target=self.thread_read)
+        self.should_exit = False
+        self.event['action'] = "TTL Up"
+    
+    def __del__(self):
+        self.stop()
+
+    def start(self):
+        self.thread.start()
+
+    def stop(self):
+        self.should_exit = True
+        self.thread.join()
+
+    def thread_read(self):
+        while not self.should_exit:
+            if not self.input.last_value:
+                v = self.input.read(event=self.event)
+            else:
+                v = self.input.read()
+            utils.wait(.001)
+
 # ## Perch ##
 
 # class Perch(BaseComponent):

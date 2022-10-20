@@ -100,7 +100,7 @@ class BooleanInput(BaseIO):
 
         return self.interface._config_read(**self.params)
 
-    def read(self):
+    def read(self, event=None):
         """ Read the status of the boolean input
 
         Returns
@@ -109,7 +109,7 @@ class BooleanInput(BaseIO):
             The current status reported by the interface
         """
 
-        self.last_value = self.interface._read_bool(**self.params)
+        self.last_value = self.interface._read_bool(**self.params,event=event)
         return self.last_value
 
     def poll(self, timeout=None):

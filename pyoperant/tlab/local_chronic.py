@@ -228,6 +228,8 @@ class Panel131Operant(panels.BasePanel):
         self.speaker = components.Speaker(output=audio_out)
         self.peck_port = components.PeckPort(IR=button, LED=light)
         self.house_light = components.HouseLight(light=main_light)
+        self.ttl_monitor = components.TTLMonitor(input_=ttl_input)
+        self.ttl_monitor.start()
         self.peck_port.on()
         self.feeder = components.Hopper(solenoid=feeder)
 
@@ -477,26 +479,17 @@ class PanelSeewiesenGUI(PanelSeewiesen):
         self.play_button = components.Button(IR=play_input)
 
 if __name__ == '__main__':
-    test = "PECKING"
-    if test is "PECKING":
-        # Pecking Test
-        from pyoperant import configure
-        from pyoperant.tlab.pecking_test import PeckingTest
-        c = configure.ConfigureYAML.load("D:\pyoperant\experiments\OperantTemplate\Box131.yaml")
-        conditions = c['conditions'].copy()
-        conditions_list = []
-        for condition_dict in conditions:
-            condition = get_object_from_string(condition_dict['class'])
-            conditions_list.append(condition(file_path=condition_dict["file_path"]))
-        c['conditions'] = conditions_list
-        exp = PeckingTest(**c)
-        exp.run()
-    elif test is "PLAYBACKGUI":
-        from pyoperant import configure
-        from pyoperant.tlab.chronic_with_online_playback import ChronicWithOnlinePlayback
-        c = configure.ConfigureYAML.load("D:\pyoperant\experiments\TestBird\chronic_with_online_playback_Red15F.yaml")
-        e = ChronicWithOnlinePlayback(**c)
-        e.run()
-
+    # Pecking Test
+    from pyoperant import configure
+    from pyoperant.tlab.pecking_test import PeckingTest
+    c = configure.ConfigureYAML.load("D:\pyoperant\experiments\OperantTemplate\Box131.yaml")
+    conditions = c['conditions'].copy()
+    conditions_list = []
+    for condition_dict in conditions:
+        condition = get_object_from_string(condition_dict['class'])
+        conditions_list.append(condition(file_path=condition_dict["file_path"]))
+    c['conditions'] = conditions_list
+    exp = PeckingTest(**c)
+    exp.run()
     
     
