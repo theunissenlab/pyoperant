@@ -231,14 +231,14 @@ class EventInterfaceHandler(EventHandler, hwio.BooleanOutput):
             try:
                 metadata_array = np.fromstring(event["metadata"],
                                                dtype=np.uint16).astype(np.uint8)[:self.metadata_bytes]
-            except TypeError:
+            except Exception: #was TypeError however I was getting ValueErrors
                 metadata_array = np.array(list(map(ord,
                                               event["metadata"].ljust(self.metadata_bytes)[:self.metadata_bytes])),
                                           dtype=np.uint8)
 
         int8_array = np.zeros(nbytes, dtype="uint8")
         int8_array[:self.name_bytes] = list(map(ord, event["name"].ljust(self.name_bytes)[:self.name_bytes]))
-        int8_array[self.name_bytes:self.name_bytes + self.action_bytes] = map(ord, event["action"].ljust(self.action_bytes)[:self.action_bytes])
+        int8_array[self.name_bytes:self.name_bytes + self.action_bytes] = list(map(ord, event["action"].ljust(self.action_bytes)[:self.action_bytes]))
         int8_array[self.name_bytes + self.action_bytes:] = metadata_array
 
         sequence = ([True] +
@@ -246,7 +246,6 @@ class EventInterfaceHandler(EventHandler, hwio.BooleanOutput):
                     [False])
         key = (event["name"], event["action"], event["metadata"])
         self.map_to_bit[key] = sequence
-
         return sequence
 
     def toggle(self):
@@ -363,7 +362,6 @@ class EventDToAHandler(EventHandler):
         """ Nothing needs to be done """
         pass
 
-
 class EventLogHandler(EventHandler):
     """ Writes event details out to a file log.
 
@@ -420,11 +418,11 @@ class EventLogHandler(EventHandler):
 events = Events()
 
 if __name__ == "__main__":
-
+    import time
     ihandler = EventInterfaceHandler(None)
     events.add_handler(ihandler)
     for ii in range(100):
-        events.write({})
+        events.write({'name':"test",'action':"test2",'metadata':"test3"})
         time.sleep(0.1)
 
     if ihandler.delay_queue.qsize() > 0:

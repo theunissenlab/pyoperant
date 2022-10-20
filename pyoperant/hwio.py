@@ -218,7 +218,8 @@ class BooleanOutput(BaseIO):
                                             *args,
                                             **kwargs)
 
-        assert self.interface.can_write_bool
+        if self.interface is not None:
+            assert self.interface.can_write_bool
         self.last_value = None
         self.config()
 

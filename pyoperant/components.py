@@ -619,6 +619,25 @@ class Microphone(BaseComponent):
     def record_last(self, duration):
         return self.input.get_recorded_data(duration)
 
+class TTLMonitor(BaseComponent):
+    """ Class which holds information about a TTL Pulse Monitor
+
+    Parameters
+    ----------
+    input_: hwio.BooleanInput
+        Input to the digital TTL Pulse
+
+    Attributes
+    ----------
+    input: hwio.BooleanInput
+        Input to the digital TTL Pulse
+    thread: TODO
+
+    """
+    def __init__(self, input_, *args, **kwargs):
+        super(TTLMonitor, self).__init__(*args,**kwargs)
+        self.input = input_
+        
 # ## Perch ##
 
 # class Perch(BaseComponent):

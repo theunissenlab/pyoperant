@@ -128,3 +128,8 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
     def end(self):
         self.panel.gui.close()
         super(ChronicWithOnlinePlayback, self).end()
+
+if __name__ == "__main__":
+    c = configure.ConfigureYAML.load("D:\pyoperant\experiments\TestBird\chronic_with_online_playback_Red15F.yaml")
+    e = ChronicWithOnlinePlayback(**c)
+    e.run()

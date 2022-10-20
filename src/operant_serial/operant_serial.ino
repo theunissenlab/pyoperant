@@ -1,5 +1,5 @@
 
-int baudRate = 19200; // 9600 seems common though it can probably be increased significantly if needed.
+unsigned long baudRate = 115200; // 9600 seems common though it can probably be increased significantly if needed.
 char ioBytes[2];
 int ioPort = 0;
 

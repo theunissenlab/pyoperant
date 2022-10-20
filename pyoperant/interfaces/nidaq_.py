@@ -208,7 +208,7 @@ class NIDAQmxInterface(base_.BaseInterface):
         task.do_channels.add_do_chan(channel)
         task.timing.cfg_samp_clk_timing(rate=self.samplerate,
                                         source=self.clock_channel)
-        #task.do_channels[channel].output_buf_size(0)
+        task.out_stream.output_buf_size = 0
         self.tasks[channel] = task
 
     def _read_bool(self, channel, invert=False, event=None, **kwargs):
@@ -608,7 +608,7 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
         self.stream.timing.cfg_samp_clk_timing(source=self.device.clock_channel,
                                         rate=self.device.samplerate,
                                         sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                        samps_per_chan=self._wav_data.shape[1])
+                                        samps_per_chan= self._wav_data.shape[0] if len(self._wav_data.shape) == 1 else self._wav_data.shape[1])
         # I think we might want to set layout='group_by_scan_number' in .write()
         self.stream.write(self._wav_data, auto_start=False)
         if start:

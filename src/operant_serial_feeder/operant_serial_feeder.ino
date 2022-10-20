@@ -14,9 +14,22 @@ const int FEEDER_IOPORT=10; // what chan is sent for feeder
 // time settings
 int delay_time = 2; // msec
 long nextStep = -1;
-int step_counter = -1;
+int feed_step_counter = -1;
 const int STEPS_PER_CYCLE = 200; // one revolutions
 const int MS_DELAY_TIME = 2; // ideal time between steps
+
+// Digital Pin Settings
+const int DIG1_PIN = 53;
+bool DIG1_ENABLED=true;
+unsigned long DIG1_NEXT = 0;
+const int DIG2_PIN = 51;
+bool DIG2_ENABLED=true;
+unsigned long DIG2_NEXT = 0;
+const int DIG3_PIN = 49;
+bool DIG3_ENABLED=true;
+unsigned long DIG3_NEXT = 0;
+const int TTL_PULSE_TIME = 500; // msec
+const int TTL_IPI = 2500; // 2.5 sec
 //const int feed
 void setup()
 {
@@ -32,6 +45,13 @@ void setup()
   digitalWrite(STEP_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW); //LOW or HIGH
+  pinMode(DIG1_PIN, OUTPUT);
+  digitalWrite(DIG1_PIN,LOW);
+  pinMode(DIG2_PIN, OUTPUT);
+  digitalWrite(DIG2_PIN,LOW);
+  pinMode(DIG3_PIN, OUTPUT);
+  digitalWrite(DIG3_PIN,LOW);
+  
 
   digitalWrite(EN_PIN, HIGH); //de-activate driver
   // start serial port at the specified baud rate
@@ -62,6 +82,7 @@ void loop()
     ioPort = (int) ioBytes[0];
 
     // Hijack ioport corresponding to feeder
+    // This is for the stepper motor Feeder
     if (ioPort == FEEDER_IOPORT){
       switch ((int) ioBytes[1]) {
         case 0:
@@ -69,19 +90,19 @@ void loop()
           break;
         case 1:
           // Start feeding
-          step_counter = STEPS_PER_CYCLE;
+          feed_step_counter = STEPS_PER_CYCLE;
           digitalWrite(LED_PIN,HIGH);
           digitalWrite(EN_PIN, LOW); //activate driver
           nextStep = millis() + delay_time;
           break;
         case 2:
           // STOP FEEDING
-          step_counter = -1;
+          feed_step_counter = -1;
           digitalWrite(LED_PIN,LOW);
           digitalWrite(EN_PIN, HIGH); //de-activate driver
           break;
       }
-    }
+    } // end stepper motor feeder code
     else {
       // Switch case on the specified action
       switch ((int) ioBytes[1]) {
@@ -108,11 +129,49 @@ void loop()
     }    
   }
   // if there are steps to do, do them
-  if (step_counter > 0){
+  if (feed_step_counter > 0){
     if (millis() > nextStep){
       digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
-      step_counter--;
+      feed_step_counter--;
       nextStep = millis() + delay_time;
+    }
+  }
+  if(DIG1_ENABLED){
+    if (millis() > DIG1_NEXT){
+      int val = digitalRead(DIG1_PIN);
+      digitalWrite(DIG1_PIN, !val);
+      if (val > 0){
+        DIG1_NEXT = millis() + TTL_IPI - TTL_PULSE_TIME;
+      }
+      else{
+        DIG1_NEXT =  millis() + TTL_PULSE_TIME;
+      }
+    }
+  }
+
+  if(DIG2_ENABLED){
+    if (millis() > DIG2_NEXT){
+      int val = digitalRead(DIG2_PIN);
+      digitalWrite(DIG2_PIN, !val);
+      if (val > 0){
+        DIG2_NEXT = millis() + TTL_IPI - TTL_PULSE_TIME;
+      }
+      else{
+        DIG2_NEXT =  millis() + 2*TTL_PULSE_TIME;
+      }
+    }
+  }
+
+  if(DIG3_ENABLED){
+    if (millis() > DIG3_NEXT){
+      int val = digitalRead(DIG3_PIN);
+      digitalWrite(DIG3_PIN, !val);
+      if (val > 0){
+        DIG3_NEXT = millis() + TTL_IPI - TTL_PULSE_TIME;
+      }
+      else{
+        DIG3_NEXT =  millis() + 3*TTL_PULSE_TIME;
+      }
     }
   }
 
