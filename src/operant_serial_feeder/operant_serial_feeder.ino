@@ -5,7 +5,7 @@ int ioPort = 0;
 
 
 // Feeder variables
-const int LED_PIN = 3;
+const int LED_PIN = 11;
 const int EN_PIN = 6;
 const int STEP_PIN = 7;
 const int DIR_PIN = 2;
@@ -23,7 +23,7 @@ const int DIG1_PIN = 53; // TTL
 bool DIG1_ENABLED=true;
 unsigned long DIG1_NEXT = 0;
 const int TTL_PULSE_TIME = 500; // msec
-const int TTL_IPI = 2500; // 2.5 sec
+const int TTL_IPI = 10000; // 10 sec
 
 const int DIG2_PIN = 51;
 bool DIG2_ENABLED=true;

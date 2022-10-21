@@ -645,11 +645,13 @@ class TTLMonitor(BaseComponent):
         self.stop()
 
     def start(self):
-        self.thread.start()
+        if not self.thread.is_alive():
+            self.thread.start()
 
     def stop(self):
-        self.should_exit = True
-        self.thread.join()
+        if self.thread.is_alive():
+            self.should_exit = True
+            self.thread.join()
 
     def thread_read(self):
         while not self.should_exit:

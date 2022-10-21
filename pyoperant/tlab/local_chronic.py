@@ -229,7 +229,6 @@ class Panel131Operant(panels.BasePanel):
         self.peck_port = components.PeckPort(IR=button, LED=light)
         self.house_light = components.HouseLight(light=main_light)
         self.ttl_monitor = components.TTLMonitor(input_=ttl_input)
-        self.ttl_monitor.start()
         self.peck_port.on()
         self.feeder = components.Hopper(solenoid=feeder)
 
@@ -266,6 +265,7 @@ class Panel131Operant(panels.BasePanel):
         self.peck_port.off()
         self.house_light.on()
         self.feeder.down()
+        self.ttl_monitor.stop()
 
     def sleep(self):
         self.peck_port.off()
@@ -276,6 +276,7 @@ class Panel131Operant(panels.BasePanel):
         self.feeder.down()
         self.house_light.on()
         self.peck_port.on()
+        self.ttl_monitor.start()
 
     def idle(self):
         self.reset()
