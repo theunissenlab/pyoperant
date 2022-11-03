@@ -4,7 +4,7 @@ import logging
 import argparse
 from functools import wraps
 from unittest import mock
-from build.lib.pyoperant.utils import get_object_from_string
+from pyoperant.utils import get_object_from_string
 
 from pyoperant import hwio, components, panels, utils, InterfaceError, events
 from pyoperant.interfaces import nidaq_, pyaudio_, tkgui_,arduino_
@@ -60,8 +60,7 @@ class Panel131(panels.BasePanel):
         if use_nidaq:
             nidaq_device = nidaq_.NIDAQmxInterface(device_name=speaker,
                                                    clock_channel="/Dev1/PFI0")
-            speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
-                                                        clock_channel="/Dev1/PFI0")
+            speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
             
             # TODO make sure that nidaq can handle event logging
             #event_out = events.EventInterfaceHandler(interface=nidaq_device,params={'channel':'/Dev1/port0/line0'})
@@ -379,7 +378,7 @@ class PanelSeewiesen(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Speakers / Headphones (Realtek ", mic = None, channel="ao0", input_channel=None, name=None, *args, **kwargs):
+    def __init__(self, speaker="Speakers (2- High Definition Au", mic = None, channel="ao0", input_channel=None, name=None, *args, **kwargs):
         super(PanelSeewiesen, self).__init__(self, *args, **kwargs)
         self.name = name
 
@@ -478,6 +477,141 @@ class PanelSeewiesenGUI(PanelSeewiesen):
         play_input = hwio.BooleanInput(name="play", interface=self.gui, params={"key": "play"})
         self.inputs.append(play_input)
         self.play_button = components.Button(IR=play_input)
+
+class PanelSeewiesenNI(panels.BasePanel):
+    """ The chronic recordings set up for Seewiesen
+
+    The speaker should probably be the address of the nidaq card
+
+    Parameters
+    ----------
+    name: string
+        Name of this box
+    speaker: string
+        Speaker device name for this box
+    channel: string
+        The channel name for the analog output
+    input_channel: string
+        The channel name for a boolean input (e.g. perch or peck-port)
+        Default None means no input configured
+
+    Attributes
+    ----------
+
+    Examples
+    --------
+    """
+
+    _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
+
+    def __init__(self, speaker="Dev1", mic = None, channel="ao0", use_nidaq=True, input_channel=None, name=None, *args, **kwargs):
+        super(PanelSeewiesenNI, self).__init__(self, *args, **kwargs)
+        self.name = name
+
+        # Initialize interfaces
+        if (use_nidaq):
+            nidaq_device = nidaq_.NIDAQmxInterface(device_name=speaker,
+                                                   clock_channel="/Dev1/PFI0")
+            speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
+            # Create a digital to analog event handler
+            analog_event_handler = events.EventDToAHandler(channel=speaker + "/" + "ao1",
+                                                          scaling=3.3,
+                                                          metadata_bytes=40)
+            audio_out = hwio.AudioOutput(interface=speaker_out,
+                                                 params={"channel": speaker + "/" + channel,
+                                                         "analog_event_handler": analog_event_handler})
+        else:
+            # To use the PC soundcard instead of NI, call with use_nidaq=False and speaker = "Speakers (2- High Definition Au"
+            speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
+            audio_out = hwio.AudioOutput(interface=speaker_out)
+
+
+        self.mic = None
+        if mic is not None:
+            self.mic_rate = 44100
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic, input_rate=self.mic_rate)
+            audio_in = hwio.AudioInput(interface=mic_in)
+            self.mic = components.Microphone(audio_in)
+        else:
+            self.mic = None
+
+        # Add boolean hwios to inputs and outputs
+        self.inputs = []
+        self.outputs = [audio_out]
+
+        # Set up components
+        self.speaker = components.Speaker(output=audio_out)
+
+        if input_channel is not None:
+            boolean_input = hwio.BooleanInput(name="Button",
+                                              interface=speaker_out,
+                                              params={"channel": speaker + "/" + input_channel,
+                                                      "invert": True})
+            self.inputs.append(boolean_input)
+            self.button = components.Button(IR=boolean_input)
+
+    def reset(self):
+
+        pass
+
+    def sleep(self):
+
+        pass
+
+    def ready(self):
+
+        pass
+
+    def idle(self):
+
+        pass
+
+    def poll_then_sound(self, timeout=None):
+
+        if not hasattr(self, "button"):
+            raise AttributeError("This panel does not have a button")
+
+        self.speaker.queue(self._default_sound_file)
+        self.button.poll(timeout=timeout)
+        self.speaker.play()
+
+class PanelSeewiesenInputNI(PanelSeewiesenNI):
+
+    def __init__(self, *args, **kwargs):
+
+        super(PanelSeewiesenInputNI, self).__init__(name="Panel with input",
+                                             input_channel="port0/line5")
+
+
+class PanelSeewiesenGUINI(PanelSeewiesenNI):
+    def __init__(self, *args, **kwargs):
+        super(PanelSeewiesenGUINI, self).__init__(*args, **kwargs)
+
+        self.state = {}
+        self.gui = tkgui_.TkInterface(self.state)
+
+        condition_input = hwio.NonBooleanInput(name="condition", interface=self.gui, params={"key": "condition"})
+        self.inputs.append(condition_input)
+        self.condition_button = components.Button(IR=condition_input)
+
+        stim_input = hwio.NonBooleanInput(name="stim", interface=self.gui, params={"key": "selected_stim"})
+        self.inputs.append(stim_input)
+        self.stimulus_select = components.Button(IR=stim_input)
+
+        pause_input = hwio.BooleanInput(name="pause", interface=self.gui, params={"key": "paused"})
+        self.inputs.append(pause_input)
+        self.pause_button = components.Button(IR=pause_input)
+
+        quit_button = hwio.BooleanInput(name="quit", interface=self.gui, params={"key": "quit"})
+        self.inputs.append(quit_button)
+        self.quit_button = components.Button(IR=quit_button)
+
+        play_input = hwio.BooleanInput(name="play", interface=self.gui, params={"key": "play"})
+        self.inputs.append(play_input)
+        self.play_button = components.Button(IR=play_input)
+
+
+
 
 if __name__ == '__main__':
     # Pecking Test
