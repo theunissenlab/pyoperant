@@ -598,7 +598,7 @@ class BaseExp(object):
             with self.finished_lock:
                 if self.finished == True:
                     break
-                self._idle.start()
+            self._idle.start()
 
 
     ## Session Flow
