@@ -189,7 +189,7 @@ class KaernbachStaircase(AdaptiveBase):
     def next(self):
         super(KaernbachStaircase, self).next()
         if self.counter > self.crit:
-            raise StopIteration
+            return
         self.counter += 1 if self.crit_method=='trials' else 0
         return self.val
 
@@ -228,7 +228,7 @@ class DoubleStaircase(AdaptiveBase):
     def next(self):
         super(DoubleStaircase, self).next()
         if self.high_idx - self.low_idx <= 1:
-            raise StopIteration
+            return
 
         delta = int(np.ceil((self.high_idx - self.low_idx) * self.rate_constant))
         if random.random() < .5: # probe low side
@@ -398,7 +398,7 @@ class BaseHandler(object):
 
     def __next__(self):
         if self._ondeck is None:
-            raise StopIteration
+            return
 
         next_item = self._ondeck
 

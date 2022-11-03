@@ -11,6 +11,7 @@ from pyoperant import states, subjects, queues
 from pyoperant.events import events, EventLogHandler
 import pyoperant.blocks as blocks_
 import pyoperant.trials as trials_
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +282,7 @@ class BaseExp(object):
 
         # Get ready to run!
         self.session_id = 0
+        self.finished_lock = Lock()
         self.finished = False
 
     def select_stimulus(self, condition):
@@ -537,7 +539,8 @@ class BaseExp(object):
 
         # Close the event handlers because they are in separate threads
         events.close_handlers()
-        self.finished = True
+        with self.finished_lock:
+            self.finished = True
         self.panel.sleep()
 
     def shape(self):
@@ -590,9 +593,13 @@ class BaseExp(object):
         self.shape()
 
         # Run until self.end() is called
-        while self.finished == False:
+        while True:
             # The idle state checks whether it's time to sleep or time to start the session, so start in that state.
-            self._idle.start()
+            with self.finished_lock:
+                if self.finished == True:
+                    break
+                self._idle.start()
+
 
     ## Session Flow
     def session_pre(self):
