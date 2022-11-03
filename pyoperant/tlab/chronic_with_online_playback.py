@@ -116,6 +116,10 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
                 continue
             else:
                 self.panel.gui.set_status("Playing stimulus")
+                if condition_str == "online":
+                    # randomly select from normal stimuli about half the time if its not completed
+                    if not self.normal_block.check_completion and random.random() > 0.2:
+                        condition_str = "normal"
                 yield block_queue.next_trial(condition_str)
 
     def select_stimulus(self, condition):
