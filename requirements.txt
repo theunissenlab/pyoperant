@@ -1,8 +1,10 @@
-ipython==5.8.0
-nidaqmx==0.5.7
-numpy==1.16.1
-PyAudio==0.2.11
+click>=7.1.2
+colorama>=0.4.4
+ipython>=5.8.0
+nidaqmx==0.6.4 # NOTE: This is nidaqmx from NI, not pylibnidaqmx from pearu
+numpy>=1.16.1
+PyAudio>=0.2.11
 PyYAML==3.13
 pyephem==3.7.6.0
 pyserial==3.4
-scipy==1.2.1
+scipy>=1.2.1

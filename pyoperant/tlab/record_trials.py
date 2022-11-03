@@ -1,5 +1,7 @@
 import os
+
 import numpy as np
+import scipy.io.wavfile
 
 
 class RecordTrialsMixin(object):
@@ -25,6 +27,12 @@ class RecordTrialsMixin(object):
             os.makedirs(directory)
 
         return recording_path
+
+    def save_wavfile(self, data, rate, dest):
+        if not os.path.exists(os.path.dirname(dest)):
+            os.makedirs(os.path.dirname(dest))
+
+        scipy.io.wavfile.write(dest, rate, data)
 
     def end(self):
         if self.panel.mic:

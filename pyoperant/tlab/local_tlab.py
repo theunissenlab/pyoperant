@@ -2,7 +2,12 @@ import datetime as dt
 import os
 import logging
 import argparse
+import tempfile
+import time
 from functools import wraps
+from unittest import mock
+
+import scipy.io.wavfile
 
 from pyoperant import hwio, components, panels, utils, InterfaceError
 from pyoperant.interfaces import pyaudio_, arduino_
@@ -54,16 +59,21 @@ class Panel125(panels.BasePanel):
     --------
     """
 
-    _default_sound_file = "/home/fet/test_song.wav"
+    _default_sound_file = "/data/pecking_test/stimuli/debugging/test_song.wav"
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/test_song.wav"
 
-    def __init__(self, arduino, speaker, mic=None, name=None, *args, **kwargs):
-
+    def __init__(self, arduino=None, speaker=None, mic=None, name=None, baud_rate=19200, *args, **kwargs):
         super(Panel125, self).__init__(self, *args, **kwargs)
+        if arduino is None:
+            raise ValueError("Arduino serial port not specified or configured.")
+        if speaker is None:
+            raise ValueError("Speaker device not specified or configured.")
+
         self.name = name
 
         # Initialize interfaces
         arduino = arduino_.ArduinoInterface(device_name=arduino,
-                                            baud_rate=19200)
+                                            baud_rate=baud_rate)
         headphone_out = pyaudio_.PyAudioInterface(device_name=speaker)
 
         # Create input and output for the pecking key
@@ -86,7 +96,7 @@ class Panel125(panels.BasePanel):
 
         # Create a mic input
         if mic is not None:
-            mic_in = pyaudio_.PyAudioInterface(device_name=mic)
+            mic_in = pyaudio_.PyAudioInterface(device_name=mic, is_mic=True)
             audio_in = hwio.AudioInput(interface=mic_in)
             self.mic = components.Microphone(audio_in)
 
@@ -103,64 +113,74 @@ class Panel125(panels.BasePanel):
         # Translations
         self.response_port = self.peck_port
 
-    def reward(self, value=12.0):
+    def reward(self, value=12.0,and_poll=True):
+        if and_poll:
+            """Raise feeder for some time"""
+            logger.debug("About to call feeder.up()")
+            self.feeder.up()
+            logger.debug("Called feeder.up()")
+            peck_time = self.peck_port.poll(value)
+            self.feeder.down()
+            if peck_time is not None:
+                return peck_time
 
-        self.feeder.up()
-        peck_time = self.peck_port.poll(value)
-        self.feeder.down()
-        if peck_time is not None:
-            return peck_time
-
-        return True
+            return True
+        else:
+            """Raise feeder for some time"""
+            self.response_port.off()
+            logger.debug("About to call feeder.up()")
+            self.feeder.up()
+            logger.debug("Called feeder.up()")
+            utils.wait(value)
+            self.feeder.down()
+            self.response_port.on()
+            return True
 
     def punish(self):
-
         pass
 
     def reset(self):
-
         self.peck_port.off()
         self.house_light.on()
         self.feeder.down()
 
     def sleep(self):
-
         self.peck_port.off()
         self.house_light.off()
         self.feeder.down()
 
     def ready(self):
-
         self.feeder.down()
         self.house_light.on()
         self.peck_port.on()
 
     def idle(self):
-
         self.reset()
 
     @shutdown_on_error
-    def test(self):
+    def test(self, filename=None):
+        """Test operation of pecking test box"""
+        if filename is None:
+            filename = self._default_sound_file
+
         self.reset()
 
-        print("Flashing pecking port")
+        print("...flashing pecking port")
         self.peck_port.flash(2.0, .1)
-        print("Raising feeder")
+        print("...raising feeder")
         self.reward(5.0)
 
-        print("Playing test sound")
-        self.speaker.queue(self._default_sound_file)
+        print("...playing test audio {}".format(filename))
+        self.speaker.queue(filename)
         self.speaker.play()
 
-        print("Polling for input. Peck to proceed (10 second timeout)")
+        print("...polling for input. Peck to proceed (10 second timeout)")
         self.peck_port.poll(10)
         self.speaker.stop()
         self.reset()
-        return True
 
     @shutdown_on_error
     def calibrate(self):
-
         self.peck_port.off()
         while True:
             is_pecked = self.peck_port.status()
@@ -176,8 +196,8 @@ class Panel125(panels.BasePanel):
         import time
 
         num_polls = list()
-        for ii in xrange(iters):
-            print("Iteration %d: " % ii),
+        for ii in range(iters):
+            print("...iteration {}".format(ii))
             count = 0
             current_time = time.time()
             while True:
@@ -186,52 +206,21 @@ class Panel125(panels.BasePanel):
                 if time.time() - current_time > duration:
                     break
             num_polls.append(count)
-            print("%d" % count)
 
-        return [float(pc) / duration for pc in num_polls]
-
-    def sound_then_feeder(self, filename="", duration=12, flash=False, flash_dur=3):
-        """ Pairs the sound playback with the feeder coming up.
-        Hit Ctrl+C to stop the sound or put the feeder down.
-        :param filename: path to sound file.
-        :param duration: duration the feeder is up (seconds)
-        :param flash: whether or not to flash the button at the start (default False)
-        """
-
-        if not filename:
-            filename = self._default_sound_file
-        self.speaker.queue(filename)
-
-        if flash:
-            self.peck_port.flash(dur=flash_dur)
-
-        self.speaker.play()
-        try:
-            while self.speaker.output.interface.stream.is_active():
-                utils.wait(0.1)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self.speaker.stop()
-
-        try:
-            self.feeder.feed(duration)
-        except KeyboardInterrupt:
-            self.feeder.down()
+        rates = [float(pc) / duration for pc in num_polls]
+        mean_rate = sum(rates) / len(rates)
+        return rates, mean_rate
 
     def test_audio(self, filename="", repeat=False):
-
         if not filename:
             filename = self._default_sound_file
 
-        print("Testing sound playback with %s" % filename)
         while True:
             self.speaker.queue(filename)
             self.speaker.play()
 
             try:
-                while self.speaker.output.interface.stream.is_active():
-                    utils.wait(0.1)
+                self.speaker.let_finish()
             except KeyboardInterrupt:
                 return
             finally:
@@ -240,112 +229,147 @@ class Panel125(panels.BasePanel):
             if not repeat:
                 break
 
+    def test_mic_recording(self, audio_file="", play_audio=True, duration=1.0, dest=None):
+        """Records audio to a temp file
 
-class Box5(Panel125):
+        if filename is given, also plays audio
+        """
+        if not audio_file:
+            filename = self._default_box_sound_file
+        else:
+            filename = audio_file
+
+        if not dest:
+            tempdir = tempfile.mkdtemp()
+            dest = os.path.join(tempdir, "test_mic_recording_{}.wav".format(self.__name__))
+
+        try:
+            _start = time.time()
+            if play_audio:
+                self.speaker.set_gain(-10)
+                self.speaker.queue(filename)
+                self.speaker.play()
+                self.speaker.let_finish()
+            else:
+                utils.wait(duration)
+
+            data, rate = self.mic.record_last(time.time() - _start)
+            scipy.io.wavfile.write(dest, rate, data)
+        except KeyboardInterrupt:
+            return dest
+        finally:
+            if play_audio:
+                self.speaker.stop()
+
+        return dest
+
+
+class Box1(Panel125):
+
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box2_sample.wav"
+    defaults = dict(
+        name="Box 1",
+        arduino="/dev/ttyArduino_box1",
+        speaker="speaker6",
+        baud_rate=115200
+    )
 
     def __init__(self, *args, **kwargs):
-        super(Box5, self).__init__(name="Box 5",
-                                   arduino="/dev/ttyArduino_box5",
-                                   speaker="speaker0", *args, **kwargs)
-
-
-class Box6(Panel125):
-
-    def __init__(self, *args, **kwargs):
-        super(Box6, self).__init__(name="Box 6",
-                                   arduino="/dev/ttyArduino_box6",
-                                   speaker="speaker1", *args, **kwargs)
+        super(Box1, self).__init__(*args, **{**self.defaults, **kwargs})
 
 
 class Box2(Panel125):
 
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box2_sample.wav"
+    defaults = dict(
+        name="Box 2",
+        arduino="/dev/ttyArduino_box2",
+        speaker="speaker2",
+        mic="mic2",
+    )
+
     def __init__(self, *args, **kwargs):
-        super(Box2, self).__init__(name="Box 2",
-                                   arduino="/dev/ttyArduino_box2",
-                                   speaker="speaker1", *args, **kwargs)
+        super(Box2, self).__init__(*args, **{**self.defaults, **kwargs})
 
 
 class Box3(Panel125):
 
-    def __init__(self, *args, **kwargs):
-        super(Box3, self).__init__(name="Box 3",
-                                   arduino="/dev/ttyArduino_box3",
-                                   speaker="speaker0", *args, **kwargs)
-
-
-class Thing13(Panel125):
-
-    _default_sound_file = "/home/tlee/code/neosound/data/zbsong.wav"
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box3_sample.wav"
+    defaults = dict(
+        name="Box 3",
+        arduino="/dev/ttyArduino_box3",
+        speaker="speaker3",
+        mic="mic3",
+    )
 
     def __init__(self, *args, **kwargs):
-        super(Thing13, self).__init__(name="Tyler Laptop",
-                                      arduino="/dev/ttyACM0",
-                                      speaker="pulse", *args, **kwargs)
+        super(Box3, self).__init__(*args, **{**self.defaults, **kwargs})
 
 
-# Scripting methods
-def test_box(args):
+class Box5(Panel125):
 
-    box = globals()["Box%d" % args.box]()
-    box.test()
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box5_sample.wav"
+    defaults = dict(
+        name="Box 5",
+        arduino="/dev/ttyArduino_box5",
+        speaker="speaker5",
+        mic="mic5",
+    )
 
-
-def test_box_audio(args):
-
-    box = globals()["Box%d" % args.box]()
-    kwargs = dict()
-    if args.sound is not None:
-        kwargs["filename"] = args.sound
-    if args.repeat is not None:
-        kwargs["repeat"] = args.repeat
-
-    box.test_audio(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super(Box5, self).__init__(*args, **{**self.defaults, **kwargs})
 
 
-def calibrate_box(args):
+class Box6(Panel125):
 
-    box = globals()["Box%d" % args.box]()
-    box.calibrate()
+    _default_box_sound_file = "/data/pecking_test/stimuli/debugging/box6_sample.wav"
+    defaults = dict(
+        name="Box 6",
+        arduino="/dev/ttyArduino_box6",
+        speaker="speaker6",
+        mic="mic6",
+    )
 
-
-def shutdown_box(args):
-
-    box = globals()["Box%d" % args.box]()
-    box.sleep()
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Run methods associated with a particular box")
-    subparsers = parser.add_subparsers(title="methods",
-                                       description="Valid methods",
-                                       help="Which method to run on the specified box")
-
-    test_parser = subparsers.add_parser("test",
-                                        description="Test whether all components of a box are functioning")
-    test_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
-    test_parser.add_argument("-s", "--sound", help="path to sound file to play")
-    test_parser.set_defaults(func=test_box)
-
-    # The test_audio script parser
-    test_audio_parser = subparsers.add_parser("test_audio",
-                                              description="Test just the audio of a box")
-    test_audio_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
-    test_audio_parser.add_argument("-s", "--sound", help="path to sound file to play")
-    test_audio_parser.add_argument("--repeat", action="store_true", help="loop the sound")
-    test_audio_parser.set_defaults(func=test_box_audio)
-
-    # The calibrate script parser
-    calibrate_parser = subparsers.add_parser("calibrate", description="Calibrate the pecking key of a box")
-    calibrate_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
-    calibrate_parser.set_defaults(func=calibrate_box)
-
-    # Shutdown script parser
-    shutdown_parser = subparsers.add_parser("shutdown", description="Shutdown a specified box")
-    shutdown_parser.add_argument("box", help="Which box to run (e.g. 5)", type=int)
-    shutdown_parser.set_defaults(func=shutdown_box)
+    def __init__(self, *args, **kwargs):
+        super(Box6, self).__init__(*args, **{**self.defaults, **kwargs})
 
 
-    args = parser.parse_args()
-    args.func(args)
+class BoxVirtual(Panel125):
+    defaults = dict(
+        name="Virtual Box",
+        arduino="fakearduinoboi",
+        speaker="default",
+        mic="default",
+    )
+
+    # @mock.patch("pyoperant.interfaces.pyaudio_.PyAudioInterface", pyaudio_.MockPyAudioInterface)
+    @mock.patch("pyoperant.interfaces.arduino_.ArduinoInterface", arduino_.MockArduinoInterface)
+    def __init__(self, *args, **kwargs):
+        super(BoxVirtual, self).__init__(*args, **{**self.defaults, **kwargs})
+
+
+PANELS = {
+    "1": Box1,
+    "2": Box2,
+    "3": Box3,
+    "5": Box5,
+    "6": Box6,
+    # "virtual": BoxVirtual
+}
+
+
+def launch_shell(box=None):
+    from IPython import embed
+
+    _boxes = []
+    if box and box in PANELS:
+        _boxes = [box]
+    elif not box:
+        _boxes = []
+
+    print("Initialized variable PANELS:\n{}".format(PANELS))
+    for _box in _boxes:
+        globals()["box{}".format(_box)] = PANELS[_box]()
+        print("\nInitialized variable box{}".format(_box))
+    print()
+    embed(colors="neutral")

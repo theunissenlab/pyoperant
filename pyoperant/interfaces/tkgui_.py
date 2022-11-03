@@ -1,10 +1,15 @@
-import Queue
+import sys
+if sys.version_info > (2,9):
+    import queue
+    import tkinter as tk
+else:
+    import Queue as queue
+    import Tkinter as tk
 import glob
 import os
 import threading
 import time
 
-import Tkinter as tk
 
 from pyoperant.interfaces import base_
 from pyoperant.interfaces.utils import MessageStatus
@@ -25,9 +30,9 @@ class TkInterface(base_.BaseInterface):
         """
         super(TkInterface, self).__init__(*args, **kwargs)
         self.event_queues = {
-            "play": Queue.Queue(),
-            "quit": Queue.Queue(),
-            "status_msg": Queue.Queue(),
+            "play": queue.Queue(),
+            "quit": queue.Queue(),
+            "status_msg": queue.Queue(),
         }
         self.state = state
         self.state.update({
@@ -87,7 +92,7 @@ class TkInterface(base_.BaseInterface):
         try:
             # Python 2.7 queue.get cannot be interrupted by keyboard interrupt
             val = self.event_queues[key].get(timeout=timeout)
-        except Queue.Empty:
+        except queue.Empty:
             return None
         else:
             self.event_queues[key].queue.clear()
@@ -305,8 +310,17 @@ class GUIThread(threading.Thread):
         if self.state["condition"] == "normal":
             self.next_stim_label_text.set("Sampling from stim directory")
         else:
-            file_name = os.path.splitext(os.path.basename(stim_path))[0]
-            self.next_stim_label_text.set("Queued\n{}".format(file_name))
+            if isinstance(stim_path, list):
+                if len(stim_path) > 1:
+                    self.next_stim_label_text.set("Selected {} stims".format(len(stim_path)))
+                else:
+                    self.next_stim_label_text.set("Queued\n{}".format(stim_path[0]))
+            elif isinstance(stim_path, (str, bytes)):
+                try:
+                    file_name = os.path.splitext(os.path.basename(stim_path))[0]
+                    self.next_stim_label_text.set("Queued\n{}".format(file_name))
+                except:
+                    self.next_stim_label_text.set(stim_path)
 
     def _periodic_loop(self):
         """Periodic callback to update labels without a specific trigger
@@ -355,7 +369,7 @@ class GUIThread(threading.Thread):
             self.update_queued_label(full_path)
 
         for msg in list(self.event_queues["status_msg"].queue):
-            if isinstance(msg, basestring):
+            if isinstance(msg, (str, bytes)):
                 self.status_label_text.set(msg)
             elif isinstance(msg, dict) and "iti" in msg and self.state["condition"] == "normal":
                 self._countdown(msg["iti"])

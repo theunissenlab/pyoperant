@@ -1,3 +1,4 @@
+import importlib
 import wave
 import sys
 import struct
@@ -42,6 +43,16 @@ class NumpyAwareJSONEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
                 return obj.tolist()
         return json.JSONEncoder.default(self, obj)
+
+
+def get_object_from_string(object_string):
+    """Convert a string defining the import path of an object to the object itself
+
+    Example: convert string 'pyoperant.behavior.go_no_go_interrupt.RewardedCondition'
+    into the RewardedCondition object by importing the module
+    """
+    module, obj_name = object_string.rsplit(".", 1)
+    return getattr(importlib.import_module(module), obj_name)
 
 
 def filter_files(directory, file_pattern="*", recursive=False):
@@ -133,7 +144,7 @@ def run_state_machine(start_in='pre', error_state=None, error_callback=None, **s
     while state is not None:
         try:
             state = state_functions[state]()
-        except Exception, e:
+        except Exception as e:
             if error_callback:
                 error_callback(e)
                 raise
@@ -232,10 +243,10 @@ def check_cmdline_params(parameters, cmd_line):
     allchars=string.maketrans('','')
     nodigs=allchars.translate(allchars, string.digits)
     if not ('box' not in cmd_line or cmd_line['box'] == int(parameters['panel_name'].encode('ascii','ignore').translate(allchars, nodigs))):
-        print "box number doesn't match config and command line"
+        print("box number doesn't match config and command line")
         return False
     if not ('subj' not in cmd_line or int(cmd_line['subj'].encode('ascii','ignore').translate(allchars, nodigs)) == int(parameters['subject'].encode('ascii','ignore').translate(allchars, nodigs))):
-        print "subject number doesn't match config and command line"
+        print("subject number doesn't match config and command line")
         return False
     return True
 
@@ -248,7 +259,7 @@ def time_in_range(start, end, x):
     else:
         return start <= x or x <= end
 
-def is_day((latitude, longitude) = ('32.82', '-117.14')):
+def is_day(latitude='32.82', longitude='-117.14'):
     """Is it daytime?
 
     (lat,long) -- latitude and longitude of location to check (default is San Diego*)

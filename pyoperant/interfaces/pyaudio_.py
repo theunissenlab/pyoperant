@@ -1,10 +1,16 @@
+
 from ctypes import *
 from contextlib import contextmanager
+import collections
 import os
 import logging
+import queue
+import signal
+import sys
 import threading
 import numpy as np
 import scipy.io.wavfile
+import time
 
 import pyaudio
 import wave
@@ -14,7 +20,64 @@ from pyoperant.events import events
 
 
 logger = logging.getLogger(__name__)
-# TODO: Clean up _stop_wav logging changes
+
+
+REC_CHUNK = 1024
+
+FauxTb = collections.namedtuple("FauxTb", ["tb_frame", "tb_lineno", "tb_next"])
+_exception_queue = queue.Queue()
+
+
+# Calling abort_program from a child thread (e.g. the pyaudio playback thread)
+# will have _handle_exit_signal be called in the main thread. This
+# will log the error and traceback, and exit with code 1 so that
+# it is clear that the program has crashed. Otherwise, errors in the# pyaudio playback won't actually force the program to crash...
+def _handle_exit_signal(*args, **kwargs):
+    try:
+        message, exc_info = _exception_queue.get_nowait()
+    except queue.Empty:
+        logger.exception("An exit signal was received but no traceback was found.")
+    else:
+        logger.error("An exit signal was received from a child thread: {}".format(message), exc_info=exc_info)
+    finally:
+        sys.exit(1)
+# Fencing SIGUSR1 for windows build
+if sys.platform[:3] != 'win':
+    kill_sig = signal.SIGUSR1
+else:
+    kill_sig = signal.SIGTERM
+
+signal.signal(kill_sig, _handle_exit_signal)
+
+def abort_program(message):
+    """Send a kill signal to the program so that it will crash
+    """
+    _exception_queue.put((message, full_exc_info(shift=1)))
+    os.kill(os.getpid(), kill_sig)
+
+
+def full_exc_info(shift=0):
+    """Like sys.exc_info, but includes the full traceback.
+
+    Excludes 'shift' frames from the traceback
+
+    Great solution copied from https://stackoverflow.com/a/58105833
+    """
+    t, v, tb = sys.exc_info()
+    f = sys._getframe(2 + shift)
+    while f is not None:
+        tb = FauxTb(f, f.f_lineno, tb)
+        f = f.f_back
+    return t, v, tb
+
+
+def get_audio_devices():
+    pa = pyaudio.PyAudio()
+    devices = [
+        pa.get_device_info_by_index(index)
+        for index in range(pa.get_device_count())
+    ]
+    return {info["name"]: info for info in devices}
 
 
 # Modify the alsa error function to suppress needless warnings
@@ -67,6 +130,131 @@ def log_alsa_warnings():
         yield
 
 
+class RingBuffer(object):
+    """A circular buffer
+
+    Allocates space for the max buffer length. Use RingBuffer.extend(data)
+    to add to the buffer and RingBuffer.to_array() to get the current contents.
+
+    Methods
+    =======
+    RingBuffer.extend(data)
+        Extends the buffer with a 2D numpy array
+    RingBuffer.to_array()
+        Return an array representation of data in the buffer (copied
+        so that it can be modified without affecting the buffer)
+    """
+    def __init__(self, maxlen=0, n_channels=None, dtype=None):
+        """Initialize circular buffer
+
+        Params
+        ======
+        maxlen : int (default 0)
+            Maximum size of buffer
+        n_channels : int (default None)
+            Enforce number of channels in buffer. If None,
+            will choose the number of channels the first time .extend()
+            is called.
+        dtype : type (default None)
+            Enforce datatype of buffer. If None,
+            will choose the datatype the first time .extend()
+            is called.
+        """
+        self.maxlen = maxlen
+
+        # Keep track of original value for if the buffer is cleared
+        self._init_n_channels = n_channels
+        self.n_channels = n_channels
+        self._init_dtype = dtype
+        self.dtype = dtype
+
+        # Data is stored in a numpy array of maxlen even when
+        # the amount of data is smaller than that. When data
+        # exceeds maxlen we loop around and keep track of where we
+        # started.
+        self._write_at = 0  # Where the next data should be written
+        self._length = 0  # The amount of samples of real data in the buffer
+        self._start = 0  # Starting index where data should be read from
+        self._overlapping = False  # Has the data wrapper around the end
+        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0), dtype=self.dtype or np.int16)
+
+    def __len__(self):
+        return self._length
+
+    def __array__(self):
+        return self.to_array()
+
+    def to_array(self):
+        # Read to the end and then wrap around to the beginning
+        # if self._start + self._length > self.maxlen:
+        if self._overlapping:
+            return np.roll(self._ringbuffer, -self._start, axis=0)
+        else:
+            return self._ringbuffer[:self._length].copy()
+
+    def clear(self):
+        self._write_at = 0
+        self._length = 0
+        self._start = 0
+        self.n_channels = self._init_n_channels
+        self.dtype = self._init_dtype
+        self._overlapping = False
+        self._ringbuffer = np.zeros((self.maxlen, self.n_channels or 0), dtype=self.dtype or np.int16)
+
+    def extend(self, data):
+        """Extend the buffer with a 2D (samples x channels) array
+
+        Requires shape to be consistent with existing data
+        """
+        if self.maxlen == 0:
+            return
+
+        # Reshape 1-D signals to be 2D with one channel
+        to_add = np.array(data)
+        if self.dtype is None:
+            self.dtype = to_add.dtype
+            self._ringbuffer = self._ringbuffer.astype(self.dtype)
+
+        if to_add.ndim == 1:
+            to_add = to_add[:, None]
+
+        # Enforce channels here
+        if self.n_channels and to_add.shape[1] != self.n_channels:
+            raise ValueError("Cannot extend {} channel Buffer with data of shape {}".format(
+                self.n_channels,
+                to_add.shape
+            ))
+
+        if self._length == 0 and self.n_channels is None:
+            self._ringbuffer = np.zeros((self.maxlen, to_add.shape[1]), dtype=self.dtype)
+            self.n_channels = to_add.shape[1]
+
+        if len(to_add) > self.maxlen:
+            self._ringbuffer[:] = to_add[-self.maxlen:]
+            self._write_at = 0
+            self._length = self.maxlen
+            self._start = 0
+            self._overlapping = False
+        elif self._write_at + len(to_add) < self.maxlen:
+            self._ringbuffer[self._write_at:self._write_at + len(to_add)] = to_add
+            self._write_at += len(to_add)
+            self._length = self.maxlen if self._overlapping else self._write_at
+            self._start = self._write_at if self._overlapping else 0
+        else:
+            first_part_size = self.maxlen - self._write_at
+            first_part = to_add[:first_part_size]
+            second_part = to_add[first_part_size:]
+            self._ringbuffer[self._write_at:] = first_part
+            self._ringbuffer[:len(second_part)] = second_part
+            self._write_at = len(second_part)
+            self._length = self.maxlen
+            self._start = self._write_at
+            self._overlapping = True
+
+    def read_last(self, n_samples):
+        return self.to_array()[-n_samples:]
+
+
 class PyAudioInterface(base_.AudioInterface):
     """Class which holds information about an audio device
 
@@ -80,29 +268,33 @@ class PyAudioInterface(base_.AudioInterface):
     https://www.assembla.com/spaces/portaudio/wiki/Tips_Callbacks
 
     """
-    def __init__(self, device_name="default", input_rate=44100, *args, **kwargs):
-        super(PyAudioInterface, self).__init__(*args,**kwargs)
+    def __init__(self, device_name="default", is_mic=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.device_name = device_name
         self.device_index = None
-        self.stream = None
         self.wf = None
-        self.rate = input_rate
+        self.rate = None
         self.callback = None
-        self._playing_wav = threading.Event()
-        self._recording = threading.Event()
-        self.rec_queue = None
         self.abort_signal = threading.Event()
         self.open()
         self.gain = None
+        self.stream = None
         self.play_thread = None
         self._playback_quit_signal = None
+        self._playback_lock = threading.Lock()
+
+        if is_mic:
+            self.rec_stream = None
+            self.record_buffer = RingBuffer()
+            self.listen()
 
     def set_gain(self, gain):
         self.gain = gain
 
-    def open(self):
-        with log_alsa_warnings():
-            self.pa = pyaudio.PyAudio()
+    def _refresh_device_index(self):
+        """Use this on pyaudio errors to check if the device index hsa changed
+        """
+        old_device_index = self.device_index
         for index in range(self.pa.get_device_count()):
             if self.device_name == self.pa.get_device_info_by_index(index)['name']:
                 logger.debug("Found device %s at index %d" % (self.device_name, index))
@@ -110,27 +302,33 @@ class PyAudioInterface(base_.AudioInterface):
                 break
             else:
                 self.device_index = None
+        if old_device_index != self.device_index:
+            logger.debug("Device index changed from {} to {}".format(old_device_index, self.device_index))
+
         if self.device_index == None:
             raise InterfaceError('could not find pyaudio device %s' % (self.device_name))
 
+    def open(self):
+        with log_alsa_warnings():
+            self.pa = pyaudio.PyAudio()
+        self._refresh_device_index()
         self.device_info = self.pa.get_device_info_by_index(self.device_index)
+        self.rate = int(self.device_info["defaultSampleRate"])
 
     def close(self):
-        logger.debug("Closing device")
+        if not sys.is_finalizing():
+            logger.debug("Closing device")
+
         self.abort_signal.set()
         self.abort_signal = threading.Event()
 
-        try:
-            self.stream.close()
-        except AttributeError:
-            self.stream = None
         try:
             self.wf.close()
         except AttributeError:
             self.wf = None
         self.pa.terminate()
 
-    def _run_play(self, wf=None, gain=None, quit_signal=None, abort_signal=None):
+    def _run_play(self, wf=None, quit_signal=None, abort_signal=None, cutoff_time = None):
         """Function to play back a sound
 
         Plays back a sound in chunks of 512 until the wav file is completed
@@ -139,8 +337,6 @@ class PyAudioInterface(base_.AudioInterface):
         Parameters
         ----------
         wf : wav file opened with wave.open
-        gain : float
-            factor by which to scale the output signal
         quit_signal : threading.Event
             thread-safe signal that will end the playback when the event is set
         abort_signal : threading.Event
@@ -148,39 +344,53 @@ class PyAudioInterface(base_.AudioInterface):
         """
         chunk = 1024
 
-        stream = self.pa.open(
-           format=self.pa.get_format_from_width(wf.getsampwidth()),
-           channels=wf.getnchannels(),
-           rate=wf.getframerate(),
-           output=True,
-           frames_per_buffer=chunk,
-           output_device_index=self.device_index,
-        )
+        if self.stream:
+            self.stream.stop_stream()
+            self.stream.close()
+
+        try:
+            self.stream = self.pa.open(
+                format=self.pa.get_format_from_width(wf.getsampwidth()),
+                channels=wf.getnchannels(),
+                rate=wf.getframerate(),
+                output=True,
+                frames_per_buffer=chunk,
+                output_device_index=self.device_index,
+            )
+        except:
+            abort_program("Could not open pyaudio stream for playback. Closing program.")
+            raise
 
         data = wf.readframes(chunk)
 
-        while not data == "":
+        if cutoff_time == None:
+            cutoff_frames = 0
+        else:
+            cutoff_frames = cutoff_time * wf.getframerate()
+
+        while (data != b"") and ((cutoff_time is None) or (cutoff_frames >= 0)):
             if quit_signal.is_set() or abort_signal.is_set():
                 logger.debug("Attempting to close pyaudio stream on interrupt")
-                stream.close()
+                self.stream.close()
+                self._playback_lock.release()
                 logger.debug("Stream closed")
                 break
 
             dtype, max_val = self._get_dtype(wf)
             data = np.frombuffer(data, dtype)
 
-            if gain:
-                data = data * np.power(10.0, gain / 20.0)
+            if self.gain:
+                data = data * np.power(10.0, self.gain / 20.0)
 
             data = data.astype(dtype).tostring()
-            stream.write(data)
+            self.stream.write(data)
             data = wf.readframes(chunk)
-        else:
+            cutoff_frames -= chunk
+        else:  # This block is run when the while condition becomes False (not on break)
             logger.debug("Attempting to close pyaudio stream on file complete")
-            # Extra wait at the end to make sure the whole file is played
-            utils.wait(0.4)
-            stream.close()
-            logger.debug("Stream closed")
+            self._playback_lock.release()
+            # Closing the stream here can cut off a pretty significant portion of the playback
+            # Instead we let the stream finish and close itself.
 
         try:
             wf.close()
@@ -198,17 +408,15 @@ class PyAudioInterface(base_.AudioInterface):
             Evenet for logging purposes
         """
         new_quit_signal = threading.Event()
-
-        new_thread = threading.Thread(
+        self.play_thread = threading.Thread(
             target=self._run_play,
             kwargs={
                 "wf": self.wf,
-                "gain": self.gain,
                 "quit_signal": new_quit_signal,
-                "abort_signal": self.abort_signal
+                "abort_signal": self.abort_signal,
+                "cutoff_time": kwargs.get("cutoff_time",None)
             }
         )
-        self.play_thread = new_thread
 
         if start:
             self._play_wav(event=event)
@@ -217,93 +425,48 @@ class PyAudioInterface(base_.AudioInterface):
 
         return new_quit_signal
 
-    def _run_record(self, duration=None, dest=None, quit_signal=None, abort_signal=None):
-        """Record audio from pyaudio stream for a fixed duration or until a quit signal
+    def rec_callback(self, in_data, frame_count, time_info, status):
+        data = np.frombuffer(in_data, dtype=np.int16)
+        self.record_buffer.extend(data)
+        return in_data, pyaudio.paContinue
 
-        Parameters
-        ----------
-        duration : float
-            Specify either the duration in seconds to record for
-            (if quit_signal is not set), or the duration to record after the
-            quit signal is received (padding)
-        dest : str
-            Path to save recorded data to
-        quit_signal : threading.Event
-            thread-safe signal that will end the recording when the event is set
-        abort_signal : threading.Event
-            thread-safe signal that will end the recording when the event is set
+    def listen(self):
+        """Start microphone recording stream
         """
-        chunk = 1024
-        stream = self.pa.open(format=pyaudio.paInt16,
+        self.rec_stream = self.pa.open(
+            format=pyaudio.paInt16,
             channels=1,
             rate=self.rate,
+            input_device_index=self.device_index,
             input=True,
             output=False,
-            frames_per_buffer=chunk)
-
-        frames = []
-
-        if quit_signal is not None:
-            while not quit_signal.is_set() and not abort_signal.is_set():
-                data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
-                frames.append(data)
-
-        if duration is not None:
-            for i in range(0, int(self.rate / chunk * duration)):
-                if abort_signal.is_set():
-                    break
-                data = stream.read(chunk)
-                data = np.frombuffer(data, dtype=np.int16)
-                frames.append(data)
-
-        stream.close()
-
-        if not len(frames):
-            return
-        data = np.concatenate(frames)
-
-        if not os.path.exists(os.path.dirname(dest)):
-            os.makedirs(os.path.dirname(dest))
-
-        scipy.io.wavfile.write(
-            dest,
-            self.rate,
-            data
+            frames_per_buffer=REC_CHUNK,
+            stream_callback=self.rec_callback
         )
 
-    def _record(self, event=None, duration=0, dest=None, **kwargs):
-        new_quit_signal = threading.Event()
+        # Set up buffer to store last 10 seconds of audio at all times
+        self.record_buffer = RingBuffer(int(self.rate) * 20)
 
-        t = threading.Thread(
-            target=self._run_record,
-            args=(duration,),
-            kwargs={
-                "dest": dest,
-                "quit_signal": new_quit_signal,
-                "abort_signal": self.abort_signal
-            }
-        )
-        t.start()
-        return t, new_quit_signal
+    def _get_last_recorded_data(self, duration):
+        """Get last few seconds of recorded audio input from mic buffer"""
+        n_samples = int(duration * self.rate)
+        return self.record_buffer.read_last(n_samples), self.rate
 
-    def _stop_record(self, event=None, thread=None, quit_signal=None, **kwargs):
-        if quit_signal is not None:
-            quit_signal.set()
-
-    def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
+    def _queue_wav(self, wav_file, start=False, cutoff_time=None, event=None, **kwargs):
         if self._playback_quit_signal:
             self._playback_quit_signal.set()
 
-        logger.debug("Queueing wavfile %s" % wav_file)
+        # We must wait for the previous stream to be closed
+        self._playback_lock.acquire()
+
+        logger.debug("Queueing wavfile %s with cutoff time %s" % (wav_file,cutoff_time))
         self.wf = wave.open(wav_file)
         self.validate()
         self._playback_quit_signal = self._get_stream(
             start=start,
-            gain=self.gain,
-            event=event
+            event=event,
+            cutoff_time = cutoff_time,
         )
-        self.set_gain(None)
 
     def _play_wav(self, event=None, gain=None, **kwargs):
         logger.debug("Playing wavfile")
@@ -318,11 +481,25 @@ class PyAudioInterface(base_.AudioInterface):
         self._playback_quit_signal.set()
         self.play_thread = None
 
+
+from unittest import mock
+
+class MockPyAudioInterface(PyAudioInterface):
+    pass
+    # def open(self):
+        # """Don't actually locate an audio device"""
+        # self.pa = pyaudio.PyAudio()
+        # Get the default audio device here instead...
+        # with mock.patch("pyaudio.PyAudio.get_device_info_by_index", return_value={"name": self.device_name}):
+            # return super().open()
+
+
+
 if __name__ == "__main__":
 
     with log_alsa_warnings():
         pa = pyaudio.PyAudio()
     pa.terminate()
-    print "-" * 40
+    print("-" * 40)
     pa = pyaudio.PyAudio()
     pa.terminate()

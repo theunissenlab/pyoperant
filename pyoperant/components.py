@@ -1,6 +1,6 @@
 import datetime
 from pyoperant import hwio, utils, ComponentError
-
+from threading import Thread
 class BaseComponent(object):
     """Base class for physcal component
 
@@ -574,11 +574,11 @@ class Speaker(BaseComponent):
     def set_gain(self, gain):
         self.gain = gain
 
-    def queue(self, wav_filename, metadata=None):
+    def queue(self, wav_filename, cutoff_time=None, metadata=None):
 
         self.event["action"] = "queue"
         self.event["metadata"] = metadata
-        return self.output.queue(wav_filename, event=self.event)
+        return self.output.queue(wav_filename, cutoff_time, event=self.event)
 
     def play(self):
 
@@ -589,6 +589,13 @@ class Speaker(BaseComponent):
 
         self.event["action"] = "stop"
         return self.output.stop(event=self.event)
+
+    def let_finish(self):
+        while self.output.interface.play_thread.is_alive():
+            utils.wait(0.01)
+
+    def is_done(self):
+        return not self.output.interface.play_thread.is_alive()
 
 
 class Microphone(BaseComponent):
@@ -606,21 +613,53 @@ class Microphone(BaseComponent):
     """
 
     def __init__(self, input_, *args, **kwargs):
-
         super(Microphone, self).__init__(*args, **kwargs)
         self.input = input_
 
-    def record(self, duration=None, dest=None):
-        self.event["action"] = "rec"
-        return self.input.start_recording(
-            event=self.event,
-            duration=duration,
-            dest=dest
-        )
+    def record_last(self, duration):
+        return self.input.get_recorded_data(duration)
 
-    def stop(self, key=None):
-        self.event["action"] = "stop"
-        self.input.stop_recording(event=self.event, key=key)
+class TTLMonitor(BaseComponent):
+    """ Class which holds information about a TTL Pulse Monitor
+
+    Parameters
+    ----------
+    input_: hwio.BooleanInput
+        Input to the digital TTL Pulse
+
+    Attributes
+    ----------
+    input: hwio.BooleanInput
+        Input to the digital TTL Pulse
+    thread: TODO
+
+    """
+    def __init__(self, input_, *args, **kwargs):
+        super(TTLMonitor, self).__init__(*args,**kwargs)
+        self.input = input_
+        self.thread = Thread(target=self.thread_read)
+        self.should_exit = False
+        self.event['action'] = "TTL Up"
+    
+    def __del__(self):
+        self.stop()
+
+    def start(self):
+        if not self.thread.is_alive():
+            self.thread.start()
+
+    def stop(self):
+        if self.thread.is_alive():
+            self.should_exit = True
+            self.thread.join()
+
+    def thread_read(self):
+        while not self.should_exit:
+            if not self.input.last_value:
+                v = self.input.read(event=self.event)
+            else:
+                v = self.input.read()
+            utils.wait(.001)
 
 # ## Perch ##
 

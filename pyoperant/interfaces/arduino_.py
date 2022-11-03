@@ -1,10 +1,15 @@
+import sys
 import time
 import datetime
 import serial
 import logging
+import random
+from unittest import mock
+
 from pyoperant.interfaces import base_
 from pyoperant import utils, InterfaceError
 from pyoperant.events import events
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +70,7 @@ class ArduinoInterface(base_.BaseInterface):
                           )
 
     def __init__(self, device_name, baud_rate=19200, *args, **kwargs):
-
-        super(ArduinoInterface, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         self.device_name = device_name
         self.baud_rate = baud_rate
@@ -76,7 +80,7 @@ class ArduinoInterface(base_.BaseInterface):
         self._state = dict()
         self.inputs = []
         self.outputs = []
-
+        self.lock = Lock()
         self.open()
 
     def __str__(self):
@@ -90,24 +94,25 @@ class ArduinoInterface(base_.BaseInterface):
 
     def open(self):
         ''' Open a serial connection for the device '''
+        with self.lock:
+            logger.debug("Opening device %s" % self)
+            self.device = serial.Serial(port=self.device_name,
+                                        baudrate=self.baud_rate,
+                                        timeout=5)
+            if self.device is None:
+                raise InterfaceError('Could not open serial device %s' % self.device_name)
 
-        logger.debug("Opening device %s" % self)
-        self.device = serial.Serial(port=self.device_name,
-                                    baudrate=self.baud_rate,
-                                    timeout=5)
-        if self.device is None:
-            raise InterfaceError('Could not open serial device %s' % self.device_name)
-
-        logger.debug("Waiting for device to open")
-        self.device.readline()
-        self.device.flushInput()
-        logger.info("Successfully opened device %s" % self)
+            logger.debug("Waiting for device to open")
+            self.device.readline()
+            self.device.flushInput()
+            logger.info("Successfully opened device %s" % self)
 
     def close(self):
         ''' Close a serial connection for the device '''
-
-        logger.debug("Closing %s" % self)
-        self.device.close()
+        with self.lock:
+            if not sys.is_finalizing():
+                logger.debug("Closing %s" % self)
+            self.device.close()
 
     def _config_read(self, channel, invert=False, **kwargs):
         ''' Configure the channel to act as a boolean input
@@ -123,20 +128,20 @@ class ArduinoInterface(base_.BaseInterface):
         -------
         True if configuration succeeded
         '''
+        with self.lock:
+            logger.debug("Configuring %s, channel %d as input" % (self.device_name, channel))
+            if invert is False:
+                self.device.write(self._make_arg(channel, 4))
+            else:
+                self.device.write(self._make_arg(channel, 5))
 
-        logger.debug("Configuring %s, channel %d as input" % (self.device_name, channel))
-        if invert is False:
-            self.device.write(self._make_arg(channel, 4))
-        else:
-            self.device.write(self._make_arg(channel, 5))
+            if channel in self.outputs:
+                self.outputs.remove(channel)
+            if channel not in self.inputs:
+                self.inputs.append(channel)
 
-        if channel in self.outputs:
-            self.outputs.remove(channel)
-        if channel not in self.inputs:
-            self.inputs.append(channel)
-
-        self._state.setdefault(channel, self._default_state.copy())
-        self._state[channel]["invert"] = invert
+            self._state.setdefault(channel, self._default_state.copy())
+            self._state[channel]["invert"] = invert
 
     def _config_write(self, channel, **kwargs):
         """ Configure the channel to act as a boolean output
@@ -150,14 +155,14 @@ class ArduinoInterface(base_.BaseInterface):
         -------
         True if configuration succeeded
         """
-
-        logger.debug("Configuring %s, channel %d as output" % (self.device_name, channel))
-        self.device.write(self._make_arg(channel, 3))
-        if channel in self.inputs:
-            self.inputs.remove(channel)
-        if channel not in self.outputs:
-            self.outputs.append(channel)
-        self._state.setdefault(channel, self._default_state.copy())
+        with self.lock:
+            logger.debug("Configuring %s, channel %d as output" % (self.device_name, channel))
+            self.device.write(self._make_arg(channel, 3))
+            if channel in self.inputs:
+                self.inputs.remove(channel)
+            if channel not in self.outputs:
+                self.outputs.append(channel)
+            self._state.setdefault(channel, self._default_state.copy())
 
     def _read_bool(self, channel, invert=False, event=None, **kwargs):
         """ Read a value from the specified channel
@@ -179,37 +184,37 @@ class ArduinoInterface(base_.BaseInterface):
         ArduinoException
             Reading from the device failed.
         """
+        with self.lock:
+            if channel not in self._state:
+                raise InterfaceError("Channel %d is not configured on device %s" % (channel, self.device_name))
 
-        if channel not in self._state:
-            raise InterfaceError("Channel %d is not configured on device %s" % (channel, self.device_name))
+            if self.device.inWaiting() > 0: # There is currently data in the input buffer
+                self.device.flushInput()
+            self.device.write(self._make_arg(channel, 0))
+            # Also need to make sure self.device.read() returns something that ord can work with. Possibly except TypeError
+            while True:
+                try:
+                    v = ord(self.device.read())
+                    break
+                    # serial.SerialException("Testing")
+                except serial.SerialException:
+                # This is to make it robust in case it accidentally disconnects or you try to access the arduino in
+                # multiple ways
+                    pass
+                except TypeError:
+                    ArduinoException("Could not read from arduino device")
 
-        if self.device.inWaiting() > 0: # There is currently data in the input buffer
-            self.device.flushInput()
-        self.device.write(self._make_arg(channel, 0))
-        # Also need to make sure self.device.read() returns something that ord can work with. Possibly except TypeError
-        while True:
-            try:
-                v = ord(self.device.read())
-                break
-                # serial.SerialException("Testing")
-            except serial.SerialException:
-            # This is to make it robust in case it accidentally disconnects or you try to access the arduino in
-            # multiple ways
-                pass
-            except TypeError:
-                ArduinoException("Could not read from arduino device")
-
-        logger.debug("Read value of %d from channel %d on %s" % (v, channel, self))
-        if v in [0, 1]:
-            if invert:
-                v = 1 - v
-            value = v == 1
-            if value:
-                events.write(event)
-            return value
-        else:
-            logger.error("Device %s returned unexpected value of %d on reading channel %d" % (self, v, channel))
-            # raise InterfaceError('Could not read from serial device "%s", channel %d' % (self.device, channel))
+            # logger.debug("Read value of %d from channel %d on %s" % (v, channel, self))
+            if v in [0, 1]:
+                if invert:
+                    v = 1 - v
+                value = v == 1
+                if value:
+                    events.write(event)
+                return value
+            else:
+                logger.error("Device %s returned unexpected value of %d on reading channel %d" % (self, v, channel))
+                # raise InterfaceError('Could not read from serial device "%s", channel %d' % (self.device, channel))
 
     def _write_bool(self, channel, value, event=None, **kwargs):
         '''Write a value to the specified channel
@@ -217,20 +222,20 @@ class ArduinoInterface(base_.BaseInterface):
         :param value: the value to write
         :return: value written if succeeded
         '''
+        with self.lock:
+            if channel not in self._state:
+                raise InterfaceError("Channel %d is not configured on device %s" % (channel, self))
 
-        if channel not in self._state:
-            raise InterfaceError("Channel %d is not configured on device %s" % (channel, self))
-
-        logger.debug("Writing %s to device %s, channel %d" % (value, self, channel))
-        events.write(event)
-        if value:
-            s = self.device.write(self._make_arg(channel, 1))
-        else:
-            s = self.device.write(self._make_arg(channel, 2))
-        if s:
-            return value
-        else:
-            raise InterfaceError('Could not write to serial device %s, channel %d' % (self.device, channel))
+            logger.debug("Writing %s to device %s, channel %d" % (value, self, channel))
+            events.write(event)
+            if value:
+                s = self.device.write(self._make_arg(channel, 1))
+            else:
+                s = self.device.write(self._make_arg(channel, 2))
+            if s:
+                return value
+            else:
+                raise InterfaceError('Could not write to serial device %s, channel %d' % (self.device, channel))
 
     @staticmethod
     def _make_arg(channel, value):
@@ -238,7 +243,32 @@ class ArduinoInterface(base_.BaseInterface):
         :return: 2-byte hex string for input to arduino
         """
 
-        return "".join([chr(channel), chr(value)])
+        return "".join([chr(channel), chr(value)]).encode()
+
+
+class MockArduinoInterface(ArduinoInterface):
+    def __init__(self, device_name, baud_rate=19200, *args, **kwargs):
+        super().__init__(device_name, baud_rate, *args, **kwargs)
+
+    def open(self):
+        with mock.patch("serial.Serial"):
+            return super().open()
+
+    def _read_bool(self, *args, **kwargs):
+        """Patched version of reading bool for pyaudio device
+        """
+        # Would it be better to patch the read functions of the Button component?
+        def _fake_read(*args, **kwargs):
+            # Send 1 values (button off) but occasionally send 0 to simulate pecks
+            # I am well aware that this is applied to all arduino components including
+            # the "feeder" but it hasn't mattered yet.
+            return chr(int(random.random() > 0.00002))
+
+        with (
+                mock.patch.object(self.device, "inWaiting", return_value=5),
+                mock.patch.object(self.device, "read", _fake_read)
+                ):
+            return super()._read_bool(*args, **kwargs)
 
 
 class ArduinoException(InterfaceError):

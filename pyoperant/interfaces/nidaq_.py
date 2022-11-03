@@ -10,19 +10,21 @@ from pyoperant.events import events, EventDToAHandler
 
 logger = logging.getLogger(__name__)
 
+# This is using the official nidaqmx package from NI
+# https://github.com/ni/nidaqmx-python
 
 def list_devices():
     """ List the devices currently connected to the system. """
 
-    return nidaqmx.System().devices
+    return [ d.name for d in nidaqmx.system.System().devices ]
 
 
 def list_analog_inputs():
     """ List the analog inputs for each device """
 
     channels = dict()
-    for dev in nidaqmx.System().devices:
-        channels[str(dev)] = dev.get_analog_input_channels()
+    for dev in nidaqmx.system.System().devices:
+        channels[dev.name] = dev.ai_physical_chans
 
     return channels
 
@@ -31,8 +33,8 @@ def list_analog_outputs():
     """ List the analog outputs for each device """
 
     channels = dict()
-    for dev in nidaqmx.System().devices:
-        channels[str(dev)] = dev.get_analog_output_channels()
+    for dev in nidaqmx.system.System().devices:
+        channels[dev.name] = dev.ao_physical_chans
 
     return channels
 
@@ -42,7 +44,7 @@ def list_boolean_inputs():
 
     channels = dict()
     for dev in nidaqmx.System().devices:
-        channels[str(dev)] = dev.get_digital_input_lines()
+        channels[dev.name] = dev.di_lines
 
     return channels
 
@@ -52,7 +54,7 @@ def list_boolean_outputs():
 
     channels = dict()
     for dev in nidaqmx.System().devices:
-        channels[str(dev)] = dev.get_digital_output_lines()
+        channels[dev.name] = dev.do_lines
 
     return channels
 
@@ -65,7 +67,7 @@ class NIDAQmxError(InterfaceError):
 
 class NIDAQmxInterface(base_.BaseInterface):
     """ Creates an interface for inputs and outputs to a NIDAQ card using
-    the pylibnidaqmx library: https://github.com/imrehg/pylibnidaqmx
+    the nidaqmx-python library: https://github.com/ni/nidaqmx-python
 
     Parameters
     ----------
@@ -149,7 +151,7 @@ class NIDAQmxInterface(base_.BaseInterface):
         """ Opens the nidaqmx device """
 
         logger.debug("Opening nidaqmx device named %s" % self.device_name)
-        self.device = nidaqmx.Device(self.device_name)
+        self.device = nidaqmx.system.Device(self.device_name)
 
     def close(self):
         """ Closes the nidaqmx device and deletes all of the tasks """
@@ -158,7 +160,7 @@ class NIDAQmxInterface(base_.BaseInterface):
         for task in self.tasks.values():
             logger.debug("Deleting task named %s" % str(task.name))
             task.stop()
-            task.clear()
+            task.close()
             del task
         self.tasks = dict()
 
@@ -177,13 +179,14 @@ class NIDAQmxInterface(base_.BaseInterface):
         # TODO: test multiple channels. What format should channels be in?
 
         logger.debug("Configuring digital input on channel(s) %s" % str(channel))
-        task = nidaqmx.DigitalInputTask()
-        task.create_channel(channel)
-        task.configure_timing_sample_clock(source=self.clock_channel,
-                                           rate=self.samplerate,
-                                           sample_mode="continuous")
-        task.set_read_relative_to("most_recent")
-        task.set_read_offset(-1)
+        task = nidaqmx.Task()
+        task.di_channels.add_di_chan(channel)
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel,
+                                        sample_mode="continuous")
+        task.di_channels[channel].relative_to(nidaqmx.constants.ReadRelativeTo.MOST_RECENT_SAMPLE)
+        task.di_channels[channel].offset(-1)
+        
         self.tasks[channel] = task
 
     def _config_write(self, channel, **kwargs):
@@ -201,11 +204,11 @@ class NIDAQmxInterface(base_.BaseInterface):
 
         # TODO: test multiple channels. What format should channels be in?
         logger.debug("Configuring digital output on channel(s) %s" % str(channel))
-        task = nidaqmx.DigitalOutputTask()
-        task.create_channel(channel)
-        task.configure_timing_sample_clock(source=self.clock_channel,
-                                           rate=self.samplerate)
-        task.set_buffer_size(0)
+        task = nidaqmx.Task()
+        task.do_channels.add_do_chan(channel)
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel)
+        task.out_stream.output_buf_size = 0
         self.tasks[channel] = task
 
     def _read_bool(self, channel, invert=False, event=None, **kwargs):
@@ -229,14 +232,10 @@ class NIDAQmxInterface(base_.BaseInterface):
 
         task = self.tasks[channel]
         task.start()
-        # while task.get_samples_per_channel_acquired() == 0:
-        #     pass
-        value, bits_per_sample = task.read(1)
-        value = value[0, 0]
+        value = task.read(1)[0]
         task.stop()
         if invert:
-            value = 1 - value
-        value = bool(value == 1)
+            value = not value
         if value:
             events.write(event)
 
@@ -302,11 +301,9 @@ class NIDAQmxInterface(base_.BaseInterface):
         task.start()
         while True:
             # Read the value - cannot use _read_bool because it must start and stop the task each time.
-            value, bits_per_sample = task.read(1)
-            value = value[0, 0]
+            value = task.read(1)
             if invert:
-                value = 1 - value
-            value = bool(value == 1)
+                value = not value
             if value:
                 events.write(event)
 
@@ -351,11 +348,12 @@ class NIDAQmxInterface(base_.BaseInterface):
         """
 
         logger.debug("Configuring analog input on channel(s) %s" % str(channel))
-        task = nidaqmx.AnalogInputTask()
-        task.create_voltage_channel(channel, min_val=min_val, max_val=max_val)
-        task.configure_timing_sample_clock(source=selsf.clock_channel,
-                                           rate=self.samplerate,
-                                           sample_mode="finite")
+        task = nidaqmx.Task()
+        task.ai_channels.add_ai_voltage_chan(channel, min_val=min_val, max_val=max_val)
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel,
+                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE)
+        
         self.tasks[channel] = task
 
         return True
@@ -381,21 +379,22 @@ class NIDAQmxInterface(base_.BaseInterface):
         """
 
         logger.debug("Configuring analog output on channel(s) %s" % str(channel))
-        task = nidaqmx.AnalogOutputTask()
+        task = nidaqmx.Task()
+        # First we need to add in whatever D2A analog handlers we have
         if self._analog_event_handler is None and \
             analog_event_handler is not None:
             if not hasattr(analog_event_handler, "channel"):
                 raise AttributeError("analog_event_handler must have a channel attribute")
-            channel = nidaqmx.libnidaqmx.make_pattern([channel,
-                                                       analog_event_handler.channel])
+            channel = make_pattern([channel,
+                                    analog_event_handler.channel])
             logger.debug("Configuring digital to analog output as well.")
             self._analog_event_handler = analog_event_handler
-
-        task.create_voltage_channel(channel, min_val=min_val, max_val=max_val)
-        task.configure_timing_sample_clock(source=self.clock_channel,
-                                           rate=self.samplerate,
-                                           sample_mode="finite")
+        task.ao_channels.add_ao_voltage_chan(channel, min_val=min_val, max_val=max_val)
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel,
+                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE)
         self.tasks[channel] = task
+        return True
 
     def _read_analog(self, channel, nsamples, event=None, **kwargs):
         """ Read from a channel or group of channels for the specified number of
@@ -419,10 +418,10 @@ class NIDAQmxInterface(base_.BaseInterface):
             raise NIDAQmxError("Channel(s) %s not yet configured" % str(channel))
 
         task = self.tasks[channel]
-        task.configure_timing_sample_clock(source=self.clock_channel,
-                                           rate=self.samplerate,
-                                           sample_mode="finite",
-                                           samples_per_channel=nsamples)
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel,
+                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                        samps_per_chan=nsamples)
         values = task.read(nsamples)
         events.write(event)
         return values
@@ -453,10 +452,10 @@ class NIDAQmxInterface(base_.BaseInterface):
 
         task = self.tasks[channel]
         task.stop()
-        task.configure_timing_sample_clock(source=self.clock_channel,
-                                           rate=self.samplerate,
-                                           sample_mode="finite",
-                                           samples_per_channel=values.shape[0])
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel,
+                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                        samps_per_chan=values.shape[0])
 
         if self._analog_event_handler is not None:
             # Get the string of (scaled) bits from the event handler
@@ -483,29 +482,23 @@ class NIDAQmxInterface(base_.BaseInterface):
         return True
 
 
-class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
+class NIDAQmxAudioInterface(base_.AudioInterface):
     """ Creates an interface for writing audio data to a NIDAQ card using
     the pylibnidaqmx library: https://github.com/imrehg/pylibnidaqmx
 
     Parameters
     ----------
-    device_name: string
-        the name of the device on your system (e.g. "Dev1")
+    device: NIDAQmxInterface instance that this audio interface
+        will write to
     samplerate: float
         the samplerate for the sound. If an external clock is
         specified, then this should be the maximum allowed samplerate.
-    clock_channel: string
-        the channel name for an external clock signal (e.g. "/Dev1/PFI0")
 
     Attributes
     ----------
+    device: NIDAQmxInterface instance
     device_name: string
         the name of the device on your system (e.g. "Dev1")
-    samplerate: float
-        the samplerate for the sound. If an external clock is
-        specified, then this should be the maximum allowed samplerate.
-    clock_channel: string
-        the channel name for an external clock signal (e.g. "/Dev1/PFI0")
     stream: nidaqmx.AnalogOutputTask
         the task used for writing out sound data
     wf: file handle
@@ -523,13 +516,12 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
     --------
 
     """
-    def __init__(self, device_name, samplerate=30000.0,
-                 clock_channel=None, *args, **kwargs):
+    def __init__(self, device, *args, **kwargs):
 
-        super(NIDAQmxAudioInterface, self).__init__(device_name=device_name,
-                                                    samplerate=samplerate,
-                                                    clock_channel=clock_channel,
+        super(NIDAQmxAudioInterface, self).__init__(device=device,
                                                     *args, **kwargs)
+        self.device = device
+        self.device_name = device.device_name
         self.stream = None
         self.wf = None
         self._wav_data = None
@@ -554,13 +546,18 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
         -------
         True if configuration succeeded
         """
-        super(NIDAQmxAudioInterface, self)._config_write_analog(
+        ret = self.device._config_write_analog(
                                                 channel,
                                                 analog_event_handler=analog_event_handler,
                                                 min_val=min_val,
                                                 max_val=max_val,
                                                 **kwargs)
-        self.stream = self.tasks.values()[0]
+        if analog_event_handler is not None:
+            # TODO refactor... analog event handler is being thrown around a lot
+            # could remove it from the base interface or remove it from this interface but we should pick one and stick with it.
+            channel = make_pattern([channel,
+                                    analog_event_handler.channel])
+        self.stream = self.device.tasks[channel]
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         """ Queue the wav file for playback
@@ -582,20 +579,21 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
         logger.debug("Queueing wavfile %s" % wav_file)
         self._wav_data = self._load_wav(wav_file)
 
-        if self._analog_event_handler is not None:
+        if self.device._analog_event_handler is not None:
             # Get the string of (scaled) bits from the event handler
-            bit_string = self._analog_event_handler.to_bit_sequence(event)
+            bit_string = self.device._analog_event_handler.to_bit_sequence(event)
 
-            # multi-channel outputs need to be of shape nsamples x nchannels
+            # multi-channel outputs need to be of shape nchannels x nsamples
             if len(self._wav_data.shape) == 1:
-                values = self._wav_data.reshape((-1, 1))
+                values = self._wav_data.reshape((1, -1))
             else:
                 values = self._wav_data
 
             # Add a channel of all zeros
-            self._wav_data = np.hstack([values, np.zeros((values.shape[0], 1))])
+            self._wav_data = np.vstack([values, np.zeros_like(values)])
             # Place the bit string at the start
-            self._wav_data[:len(bit_string), -1] = bit_string
+            self._wav_data[-1, :len(bit_string)] = bit_string
+
         self._get_stream(start=start, **kwargs)
 
     def _get_stream(self, start=False, **kwargs):
@@ -607,10 +605,10 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
             Whether or not to immediately start playback
         """
 
-        self.stream.configure_timing_sample_clock(source=self.clock_channel,
-                                                  rate=self.samplerate,
-                                                  sample_mode="finite",
-                                                  samples_per_channel=self._wav_data.shape[0])
+        self.stream.timing.cfg_samp_clk_timing(source=self.device.clock_channel,
+                                        rate=self.device.samplerate,
+                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                        samps_per_chan= self._wav_data.shape[0] if len(self._wav_data.shape) == 1 else self._wav_data.shape[1])
         # I think we might want to set layout='group_by_scan_number' in .write()
         self.stream.write(self._wav_data, auto_start=False)
         if start:
@@ -656,3 +654,101 @@ class NIDAQmxAudioInterface(NIDAQmxInterface, base_.AudioInterface):
              self.wf = None
 
         self._wav_data = None
+
+
+
+
+# make_pattern function from https://github.com/pearu/pylibnidaqmx/blob/master/nidaqmx/libnidaqmx.py#L274
+def make_pattern(paths, _main=True):
+    """
+    Returns a pattern string from a list of path strings.
+
+    For example::
+
+      >>> make_pattern(['Dev1/ao1', 'Dev1/ao2','Dev1/ao3', 'Dev1/ao4'])
+      'Dev1/ao1:4'
+
+    """
+    patterns = {}
+    flag = False
+    for path in paths:
+        if path.startswith('/'):
+            path = path[1:]
+        splitted = path.split('/',1)
+        if len(splitted)==1:
+            if patterns:
+                assert flag, repr((flag,paths,patterns, path,splitted))
+            flag = True
+            word = splitted[0]
+            i = 0
+            while i<len(word):
+                if word[i].isdigit():
+                    break
+                i += 1
+            
+            splitted = [word[:i], word[i:]]
+        l = patterns.get(splitted[0], None)
+        if l is None:
+            l = patterns[splitted[0]] = set()
+        l.update(splitted[1:])
+    r = []
+    for prefix in sorted(patterns.keys()):
+        lst = list(patterns[prefix])
+        if len (lst)==1:
+            if flag:
+                r.append(prefix + lst[0])
+            else:
+                r.append(prefix +'/'+ lst[0])
+        elif lst:
+            if prefix:
+                subpattern = make_pattern(lst, _main=False)
+                if subpattern is None:
+                    if _main:
+                        return ','.join(paths)
+                        #raise NotImplementedError(repr((lst, prefix, paths, patterns))
+                    else:
+                        return None
+                if ',' in subpattern:
+                    subpattern = '{%s}' % (subpattern)
+                if flag:
+                    r.append(prefix+subpattern)
+                else:
+                    r.append(prefix+'/'+subpattern)
+            else:
+                slst = sorted(int(i) for i in lst)
+                #assert slst == range(slst[0], slst[-1]+1), repr((slst, lst))
+                if len (slst)==1:
+                    r.append(str (slst[0]))
+                elif slst == list(range(slst[0], slst[-1]+1)):
+                    r.append('%s:%s' % (slst[0],slst[-1]))
+                else:
+                    return None
+                    #raise NotImplementedError(repr(slst), repr(prefix), repr(paths))
+        else:
+            r.append(prefix)
+    return ','.join(r)
+
+
+def _test_make_pattern():
+    paths = ['Dev1/ao1', 'Dev1/ao2','Dev1/ao3', 'Dev1/ao4',
+             'Dev1/ao5','Dev1/ao6','Dev1/ao7']
+    assert make_pattern(paths) == 'Dev1/ao1:7',\
+        repr(make_pattern(paths))
+    paths += ['Dev0/ao1']
+    assert make_pattern(paths) == 'Dev0/ao1,Dev1/ao1:7',\
+        repr(make_pattern(paths))
+    paths += ['Dev0/ao0']
+    assert make_pattern(paths) == 'Dev0/ao0:1,Dev1/ao1:7',\
+        repr(make_pattern(paths))
+    paths += ['Dev1/ai1', 'Dev1/ai2','Dev1/ai3']
+    assert make_pattern(paths) == 'Dev0/ao0:1,Dev1/{ai1:3,ao1:7}',\
+        repr(make_pattern(paths))
+    paths += ['Dev2/port0/line0']
+    assert make_pattern(paths) == 'Dev0/ao0:1,Dev1/{ai1:3,ao1:7},Dev2/port0/line0',\
+        repr(make_pattern(paths))
+    paths += ['Dev2/port0/line1']
+    assert make_pattern(paths) == 'Dev0/ao0:1,Dev1/{ai1:3,ao1:7},Dev2/port0/line0:1',\
+        repr(make_pattern(paths))
+    paths += ['Dev2/port1/line0','Dev2/port1/line1']
+    assert make_pattern(paths) == 'Dev0/ao0:1,Dev1/{ai1:3,ao1:7},Dev2/{port0/line0:1,port1/line0:1}',\
+        repr(make_pattern(paths))
