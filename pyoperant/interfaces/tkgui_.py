@@ -2,6 +2,7 @@ import sys
 if sys.version_info > (2,9):
     import queue
     import tkinter as tk
+    basestring = str
 else:
     import Queue as queue
     import Tkinter as tk
@@ -66,7 +67,7 @@ class TkInterface(base_.BaseInterface):
         self.window.quit()
         self.window.join()
 
-    def _read_bool(self, key=None):
+    def _read_bool(self,  event=None, key=None):
         return self.state[key]
 
     def _read(self, timeout=None, key=None):
