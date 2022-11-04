@@ -282,7 +282,6 @@ class BaseExp(object):
 
         # Get ready to run!
         self.session_id = 0
-        self.finished_lock = Lock()
         self.finished = False
 
     def select_stimulus(self, condition):
@@ -539,8 +538,7 @@ class BaseExp(object):
 
         # Close the event handlers because they are in separate threads
         events.close_handlers()
-        with self.finished_lock:
-            self.finished = True
+        self.finished = True
         self.panel.sleep()
 
     def shape(self):
@@ -593,11 +591,8 @@ class BaseExp(object):
         self.shape()
 
         # Run until self.end() is called
-        while True:
+        while self.finished == False:
             # The idle state checks whether it's time to sleep or time to start the session, so start in that state.
-            with self.finished_lock:
-                if self.finished == True:
-                    break
             self._idle.start()
 
 
