@@ -66,7 +66,7 @@ class TkInterface(base_.BaseInterface):
         self.window.quit()
         self.window.join()
 
-    def _read_bool(self, key=None):
+    def _read_bool(self, event=None, key=None):
         return self.state[key]
 
     def _read(self, timeout=None, key=None):

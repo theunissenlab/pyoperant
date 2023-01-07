@@ -112,8 +112,6 @@ def prepare_todays_experiment(
     """
     from pyoperant.tlab.local_tlab import PANELS
 
-    box_name = PANELS[box].__name__
-
     config_file = get_default_config(box)
 
     # Find the config file if default is overriden by command line option
@@ -169,12 +167,13 @@ def prepare_todays_experiment(
 
     if not os.path.exists(parameters["experiment_path"]):
         os.makedirs(parameters["experiment_path"])
-
-    # Set up a symlink in the home directory from data_Box{BOX} -> {experiment_path}/{subject}/{date}
-    data_link = os.path.expanduser(os.path.join("~", "data_{}".format(box_name)))
-    if os.path.exists(data_link):
-        os.remove(data_link)
-    os.symlink(parameters["experiment_path"], data_link)
+    if box in PANELS:
+        box_name = PANELS[box].__name__
+        # Set up a symlink in the home directory from data_Box{BOX} -> {experiment_path}/{subject}/{date}
+        data_link = os.path.expanduser(os.path.join("~", "data_{}".format(box_name)))
+        if os.path.exists(data_link):
+            os.remove(data_link)
+        os.symlink(parameters["experiment_path"], data_link)
 
     return parameters
 

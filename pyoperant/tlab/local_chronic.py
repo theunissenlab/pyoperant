@@ -60,8 +60,7 @@ class Panel131(panels.BasePanel):
         if use_nidaq:
             nidaq_device = nidaq_.NIDAQmxInterface(device_name=speaker,
                                                    clock_channel="/Dev1/PFI0")
-            speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
-                                                        clock_channel="/Dev1/PFI0")
+            speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
             
             # TODO make sure that nidaq can handle event logging
             #event_out = events.EventInterfaceHandler(interface=nidaq_device,params={'channel':'/Dev1/port0/line0'})
@@ -77,7 +76,13 @@ class Panel131(panels.BasePanel):
         audio_out = hwio.AudioOutput(interface=speaker_out,
                                      params={"channel": speaker + "/" + channel,
                                              "analog_event_handler": analog_event_handler})
-
+        
+        arduino = arduino_.ArduinoInterface(device_name="COM5",
+                                            baud_rate=115200)
+        ttl_input = hwio.BooleanInput(name="TTL", interface=arduino,
+                                    params=dict(channel=53))
+        self.ttl_monitor = components.TTLMonitor(input_=ttl_input)
+        
         self.mic = None
         if mic is not None:
             self.mic_rate = 44100
@@ -105,17 +110,19 @@ class Panel131(panels.BasePanel):
     def reset(self):
         if self.mic:
             self.mic.input.interface.close()
+        self.ttl_monitor.stop()
 
     def sleep(self):
+        self.ttl_monitor.stop()
         if self.mic:
             self.mic.input.interface.close()
 
     def ready(self):
-
+        self.ttl_monitor.start()
         pass
 
     def idle(self):
-
+        self.ttl_monitor.stop()
         pass
 
     def poll_then_sound(self, timeout=None):
@@ -181,15 +188,6 @@ class Panel131Operant(panels.BasePanel):
             nidaq_device = nidaq_.NIDAQmxInterface(device_name=speaker,
                                                    clock_channel="/Dev1/PFI0")
             speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
-            #,
-            #                                            clock_channel="/Dev1/PFI0")
-            # nidaq_device = nidaq_.NIDAQmxInterface(device_name=speaker,
-            #                                        clock_channel="/Dev1/PFI0")
-            # speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
-            
-            # TODO make sure that nidaq can handle event logging
-            #event_out = events.EventInterfaceHandler(interface=nidaq_device,params={'channel':'/Dev1/port0/line0'})
-            #events.events.add_handler(event_out )
         else:
             speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
 
@@ -379,22 +377,28 @@ class PanelSeewiesen(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Speakers / Headphones (Realtek ", mic = None, channel="ao0", input_channel=None, name=None, *args, **kwargs):
+    def __init__(self, speaker="Speakers / Headphones (Realtek ", mic = None, channel="ao0", use_nidaq = False, input_channel=None, name=None, *args, **kwargs):
         super(PanelSeewiesen, self).__init__(self, *args, **kwargs)
         self.name = name
 
         # Initialize interfaces
-        #speaker_out = nidaq_.NIDAQmxAudioInterface(device_name=speaker,
-        #                                           clock_channel="/Dev1/PFI0")
-        speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
-        # Create a digital to analog event handler
-        #analog_event_handler = events.EventDToAHandler(channel=speaker + "/" + "ao1",
-        #                                               scaling=3.3,
-        #                                               metadata_bytes=40)
-        # Create an audio output
-        audio_out = hwio.AudioOutput(interface=speaker_out)
-        #                             params={"channel": speaker + "/" + channel,
-        #                                     "analog_event_handler": analog_event_handler})
+        
+        if use_nidaq: # if you want to use nidaq, set speaker to "Dev1" or whatever device your nidaq system is
+            nidaq_device = nidaq_.NIDAQmxInterface(device_name=speaker,
+                                                   clock_channel="/Dev1/PFI0")
+            speaker_out = nidaq_.NIDAQmxAudioInterface(device=nidaq_device)
+            analog_event_handler = events.EventDToAHandler(channel=speaker + "/" + "ao1",
+                                                           scaling=3.3,
+                                                           metadata_bytes=40)
+            # Create an audio output
+            audio_out = hwio.AudioOutput(interface=speaker_out,
+                                            params={"channel": speaker + "/" + channel,
+                                                    "analog_event_handler": analog_event_handler})
+        else:
+            speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)
+            # Create an audio output
+            audio_out = hwio.AudioOutput(interface=speaker_out)
+
         self.mic = None
         if mic is not None:
             self.mic_rate = 44100
@@ -482,15 +486,23 @@ class PanelSeewiesenGUI(PanelSeewiesen):
 if __name__ == '__main__':
     # Pecking Test
     from pyoperant import configure
+    import shutil
     from pyoperant.tlab.pecking_test import PeckingTest
-    c = configure.ConfigureYAML.load("D:\pyoperant\experiments\OperantTemplate\Box131.yaml")
+    cfg = "D:\OperantEphys\HpiWhi5668M\Configs\OperantEphys_HpiWhi5668M_interrupt_rev.yaml"
+    c = configure.ConfigureYAML.load(cfg)
     conditions = c['conditions'].copy()
     conditions_list = []
     for condition_dict in conditions:
         condition = get_object_from_string(condition_dict['class'])
         conditions_list.append(condition(file_path=condition_dict["file_path"]))
     c['conditions'] = conditions_list
+
     exp = PeckingTest(**c)
+    # copy the yaml file used for this experiment to the experiment path
+    out_path = os.path.join(exp.experiment_path,"%s_%s_config.yaml"%(exp.subject.name,exp.timestamp))
+    shutil.copy(cfg,out_path)
+
+    #run the experiment
     exp.run()
     
     

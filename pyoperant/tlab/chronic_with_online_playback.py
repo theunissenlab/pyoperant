@@ -130,6 +130,10 @@ class ChronicWithOnlinePlayback(chronic_playback.ChronicPlayback, record_trials.
         super(ChronicWithOnlinePlayback, self).end()
 
 if __name__ == "__main__":
-    c = configure.ConfigureYAML.load("D:\pyoperant\experiments\TestBird\chronic_with_online_playback_Red15F.yaml")
+    import shutil
+    cfg = "D:\OperantEphys\HpiWhi5668M\Configs\Chronic_HpiWhi5668M_fullRep.yaml"
+    c = configure.ConfigureYAML.load(cfg)
     e = ChronicWithOnlinePlayback(**c)
+    out_path = os.path.join(e.experiment_path,"%s_%s_config.yaml"%(e.subject.name,e.timestamp))
+    shutil.copy(cfg,out_path)
     e.run()

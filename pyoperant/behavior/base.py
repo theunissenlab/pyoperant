@@ -175,6 +175,11 @@ class BaseExp(object):
             os.makedirs(experiment_path)
         self.experiment_path = experiment_path
 
+        # Experiment descriptors
+        self.name = name
+        self.description = description
+        self.timestamp = dt.datetime.now().strftime(filetime_fmt)
+
         self.gain = gain if gain is not None else {}
 
         # Set up logging
@@ -187,11 +192,12 @@ class BaseExp(object):
         self.configure_logging(debug=debug, **stream_handler)
 
         # Event logging takes filename, format, and component as arguments
-        event_handler = log_handlers.pop("event", dict())
+        event_handler = log_handlers.pop("event", dict({'filename':"%s_%s_events.log"%(subject_name, self.timestamp)}))
         self.configure_event_logging(**event_handler)
 
         # File handler has keywords of filename and level
         if "file" in log_handlers:
+            log_handlers['file']['filename'] = "%s_%s_experiment.log"%(subject_name, self.timestamp)
             self.add_file_handler(**log_handlers["file"])
 
         # Email handler has keywords of mailhost, toaddrs, fromaddr, subject, credentials, secure, and level
@@ -201,10 +207,7 @@ class BaseExp(object):
         if "slack" in log_handlers:
             self.add_slack_handler(**log_handlers["slack"])
 
-        # Experiment descriptors
-        self.name = name
-        self.description = description
-        self.timestamp = dt.datetime.now().strftime(filetime_fmt)
+        
         logger.debug("Initializing experiment: %s" % self.name)
         logger.debug(self.description)
         logger.debug("This experiment will store the following trial " +
@@ -307,7 +310,7 @@ class BaseExp(object):
 
         if subject.datastore is None:
             if filename is None:
-                filename = "%s_trialdata_%s.%s" % (subject.name,
+                filename = "%s_%s_trialdata.%s" % (subject.name,
                                                    self.timestamp,
                                                    datastore)
             # Add directory if filename is not a full path

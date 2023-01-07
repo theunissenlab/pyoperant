@@ -348,7 +348,7 @@ class PeckingDelayTest(PeckingTest):
         # pecks received in that time for logging purposes
         while dt.datetime.now() < end_time:
             secs = (end_time-dt.datetime.now()).total_seconds()
-            logger.info("Polling for %s seconds" %secs)
+            logger.info("Polling for %s seconds Before Response phase" %secs)
             self.panel.response_port.poll(secs)
             self.this_trial.n_early_pecks += 1
 
@@ -365,11 +365,13 @@ class PeckingDelayTest(PeckingTest):
 
         # this loop essentially waits until end time but counts the number of
         # pecks received in that time for logging purposes
+        logger.info("Polling for response for %s seconds" %self.response_time)
         self.this_trial.response_time = self.panel.response_port.poll(self.response_time)
-        while dt.datetime.now() < end_time:
-            secs = (end_time-dt.datetime.now()).total_seconds()
-            logger.info("Polling for response for %s seconds" %secs)
-            self.panel.response_port.poll(secs)
+        # while dt.datetime.now() < end_time:
+        #     secs = (end_time-dt.datetime.now()).total_seconds()
+        #     logger.info("Polling for response for %s seconds" %secs)
+        #     self.panel.response_port.poll(secs)
+        #     break
 
         logger.debug("Received peck or timeout, providing reward or punishment.")
 
@@ -406,12 +408,14 @@ class PeckingDelayTest(PeckingTest):
     def punish_main(self):
         """Punish incorrect response"""
         self.panel.response_port.off()
-        logger.info("playing tone for punishment, no food")
-        if self.punish_file is not None:
-            self.panel.speaker.queue(self.punish_file, self.punish_time)
-            self.panel.speaker.play()
-        self.panel.speaker.let_finish()
+        self.panel.house_light.off()
+        # logger.info("playing tone for punishment, no food")
+        # if self.punish_file is not None:
+        #     self.panel.speaker.queue(self.punish_file, self.punish_time)
+        #     self.panel.speaker.play()
+        # self.panel.speaker.let_finish()
         utils.wait(self.post_punish_delay)
+        self.panel.house_light.on()
         self.panel.response_port.on()
 
 
@@ -546,7 +550,12 @@ class PeckingDMTS(PeckingTest):
 
     def punish_main(self):
         """Punish incorrect response"""
-        #self.panel.response_port.off()
+        # punish with a timeout
+        self.panel.response_port.off()
+        self.panel.house_light.off()
+        utils.wait(self.post_punish_delay)
+        self.panel.response_port.on()
+        self.panel.house_light.on()
         #logger.info("playing tone for punishment, no food")
         #if self.punish_file is not None:
         #    self.panel.speaker.queue(self.punish_file, self.punish_time)
