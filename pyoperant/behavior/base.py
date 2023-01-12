@@ -267,6 +267,7 @@ class BaseExp(object):
         self.session = session
         self.session.experiment = self
         if max_trials is not None:
+            print('Maximum Trials:', max_trials)
             self.set_session_trial_limit(max_trials)
         if session_duration is not None or session_interval is not None:
             self.set_session_time_limits(duration=session_duration,

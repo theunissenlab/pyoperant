@@ -10,6 +10,10 @@ from pyoperant import StimulusMissing
 from pyoperant.utils import Event, filter_files
 
 logger = logging.getLogger(__name__)
+try:
+    basestring
+except NameError:
+    basestring = str
 
 # TODO: Integrate this concept of "event" with the one in events.py
 
@@ -273,7 +277,7 @@ class DynamicStimulusCondition(StimulusCondition):
             if len(self._index_list) and self._last_selected and selected == self._last_selected:
                 pass
             else:
-                self._index_list = range(len(selected))
+                self._index_list = list(range(len(selected)))
                 random.shuffle(self._index_list)
 
             self._last_selected = selected
