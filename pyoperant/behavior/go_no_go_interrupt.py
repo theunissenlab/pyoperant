@@ -6,6 +6,7 @@ import csv
 import datetime as dt
 import random
 import numpy as np
+import hashlib
 import time
 from pyoperant.behavior import base
 from pyoperant.errors import EndSession
@@ -134,7 +135,25 @@ class GoNoGoInterrupt(base.BaseExp):
                                      self.this_trial.time.strftime("%H:%M:%S"),
                                      self.this_trial.condition.name,
                                      self.this_trial.stimulus.name))
-        self.panel.speaker.queue(self.this_trial.stimulus.file_origin)
+
+        # Set up metadata
+        repetition = int(self.this_trial.index / len(self.this_trial.condition.files))
+        repetition = "%04d" % repetition
+        
+        # Get the trial index as a string
+        trial_index = "%04d" % self.this_trial.index
+
+        # Get the md5 hash
+        md5 = hashlib.md5()
+        with open(self.this_trial.stimulus.file_origin, "rb") as fh:
+            md5.update(fh.read())
+        md5 = str(md5.hexdigest())
+
+        metadata = "".join([repetition, trial_index, md5])
+
+        self.panel.speaker.queue(self.this_trial.stimulus.file_origin,
+                                 metadata=metadata)
+
         self.this_trial.annotate(stimulus_time=dt.datetime.now())
         self.panel.speaker.play()
 
