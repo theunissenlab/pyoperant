@@ -517,9 +517,12 @@ class PanelSeewiesenNI(panels.BasePanel):
             analog_event_handler = events.EventDToAHandler(channel=speaker + "/" + "ao1",
                                                           scaling=3.3,
                                                           metadata_bytes=40)
+            # Create a digital event handler
+            digital_event_handler = events.EventDigitalHandler(channel= speaker + "/" + "port0", on_off_bit = True, action_bits=4)
             audio_out = hwio.AudioOutput(interface=speaker_out,
                                                  params={"channel": speaker + "/" + channel,
-                                                         "analog_event_handler": analog_event_handler})
+                                                         "analog_event_handler": analog_event_handler,
+                                                         "digital_event_handler": digital_event_handler})
         else:
             # To use the PC soundcard instead of NI, call with use_nidaq=False and speaker = "Speakers (2- High Definition Au"
             speaker_out = pyaudio_.PyAudioInterface(device_name=speaker)

@@ -362,6 +362,71 @@ class EventDToAHandler(EventHandler):
         """ Nothing needs to be done """
         pass
 
+class EventDigitalHandler(EventHandler):
+    """ Handler to format event information so that it can be sent as a sequence
+    of 1+4 bits to a parallel port. 
+
+    Parameters
+    ----------
+    on_off_bit : Boolean for deciding whether first bit is used for on vs off (stimulus on)
+    action_bits : Number of bits not including the on_off_bit (if True) to code the event 
+
+    All additional key-value pairs are stored for use by the interface
+
+    Methods
+    -------
+    to_bit_sequence(event) - Serializes the event details into a string of bits
+    """
+    def __init__(self, on_off_bit=True, action_bits=4,
+                 **interface_params):
+
+        self.on_off_bit = on_off_bit
+        self.action_bits = action_bits
+        self.queue = queue.Queue(maxsize=0)
+        for key, value in interface_params.items():
+            setattr(self, key, value)
+
+    def filter(self, event):
+        """ Always returns False, as this one should never be called by Events
+        """
+
+        return False
+
+    def write(self, event):
+        """ Does nothing """
+        pass
+
+    def to_bit_sequence(self, event, on_off = True):
+        """ Creates an array of bits from the event. 
+
+        Parameters
+        ----------
+        event: a positive integer, if greater than 2**action_bits the modulus is used
+
+        Returns
+        -------
+        The array of bits expressed as analog values. The first value is set as 0 or 1 depending on on_off_bit
+        """
+
+
+        # Set up int8 value of the event
+        mod_value = 2**(self.action_bits)
+        metadata = event['metadata']
+        event_value = int(metadata[4:8]) % mod_value   # Meta data as 4 chars as rep, 4 chars as triasl, and mdd5: see local_chronic.py 
+        event_value = np.asarray( [event_value], dtype=np.uint32)  # Requires uint32
+
+        if (self.on_off_bit):
+            event_value[0] = event_value[0]*10 + 1
+        
+       # sequence = sequence + np.unpackbits(event_value).astype(bool).tolist()[-self.action_bits:]
+
+        self.map_to_bit = event_value
+
+        return event_value
+
+    def close(self):
+        """ Nothing needs to be done """
+        pass
 class EventLogHandler(EventHandler):
     """ Writes event details out to a file log.
 
