@@ -136,13 +136,16 @@ class NIDAQmxInterface(base_.BaseInterface):
     """
 
     def __init__(self, device_name, samplerate=30000,
-                 analog_event_handler=None, clock_channel="OnboardClock",
+                 analog_event_handler=None,
+                 digital_event_handler=None,
+                 clock_channel="OnboardClock",
                  *args, **kwargs):
         super(NIDAQmxInterface, self).__init__(*args, **kwargs)
         self.device_name = device_name
         self.samplerate = samplerate
         self.clock_channel = clock_channel
         self._analog_event_handler = analog_event_handler
+        self._digital_event_handler = digital_event_handler
 
         self.tasks = dict()
         self.open()
@@ -242,7 +245,7 @@ class NIDAQmxInterface(base_.BaseInterface):
 
         return value
 
-    def _write_bool(self, channel, value, event=None, auto_start = True, **kwargs):
+    def _write_bool(self, channel, value, event=None, is_blocking=False, auto_start = True, **kwargs):
         """ Write a boolean value to a channel or group of channels
 
         Parameters
@@ -261,8 +264,19 @@ class NIDAQmxInterface(base_.BaseInterface):
         if channel not in self.tasks:
             raise NIDAQmxError("Channel(s) %s not yet configured" % str(channel))
         task = self.tasks[channel]
+        task.stop()
+        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+                                        source=self.clock_channel,
+                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                        samps_per_chan=value.shape[0])
         events.write(event)
         task.write(value, auto_start=auto_start)
+
+        task.start()
+        if is_blocking:
+            task.wait_until_done()
+            task.stop()
+
 
         return True
 
@@ -359,7 +373,7 @@ class NIDAQmxInterface(base_.BaseInterface):
 
         return True
 
-    def _config_write_analog(self, channel, analog_event_handler=None,
+    def _config_write_analog(self, channel, analog_event_handler=None, digital_event_handler = None,
                              min_val=-10.0, max_val=10.0, **kwargs):
         """ Configure a channel or group of channels as an analog output
 
@@ -392,10 +406,30 @@ class NIDAQmxInterface(base_.BaseInterface):
             self._analog_event_handler = analog_event_handler
         
         task.ao_channels.add_ao_voltage_chan(channel, min_val=min_val, max_val=max_val)
-        task.timing.cfg_samp_clk_timing(rate=self.samplerate,
-                                        source=self.clock_channel,
-                                        sample_mode=nidaqmx.constants.AcquisitionType.FINITE)
+        # task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+        #                                source=self.clock_channel,
+        #                                sample_mode=nidaqmx.constants.AcquisitionType.FINITE)
+    
         self.tasks[channel] = task
+        # Now add the digital channel
+        if self._digital_event_handler is None and \
+           digital_event_handler is not None:
+            channel_bool = make_pattern([digital_event_handler.channel])
+            dig_task = nidaqmx.Task()
+            dig_task.do_channels.add_do_chan(channel_bool)
+            self._digital_event_handler = digital_event_handler
+            self._dig_channels = channel_bool
+            #dig_task.timing.cfg_samp_clk_timing(rate=self.samplerate,
+            #                            source=self.clock_channel,
+            #                            sample_mode=nidaqmx.constants.AcquisitionType.FINITE)
+            
+            #dig_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+            #    task.triggers.start_trigger.term)
+            self.tasks[channel_bool] = dig_task
+            logger.debug("Configuring digital output as well.")
+
+                 
+        
         return True
 
     def _read_analog(self, channel, nsamples, event=None, **kwargs):
@@ -471,6 +505,8 @@ class NIDAQmxInterface(base_.BaseInterface):
             values = np.hstack([values, np.zeros((values.shape[0], 1))])
             # Place the bit string at the start
             values[:len(bit_string), -1] = bit_string
+
+        # Not dealing with additional digital code here...
 
         # Write the values to the nidaq buffer
         # I think we might want to set layout='group_by_scan_number' in .write()
@@ -553,24 +589,22 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
         self.device._config_write_analog(
                                                 channel,
                                                 analog_event_handler = analog_event_handler,
+                                                digital_event_handler = digital_event_handler,
                                                 min_val=min_val,
                                                 max_val=max_val,
                                                 **kwargs)
-        
-        # Set up the digital channels
-        if digital_event_handler is not None:
-            channel_bool = make_pattern([digital_event_handler.channel])
-            self.device._config_write( channel_bool, **kwargs)
-            self._dig_channels = channel_bool
-            self._digital_event_handler = digital_event_handler
-            logger.debug("Configuring digital output as well.")
 
         if analog_event_handler is not None:
             # TODO refactor... analog event handler is being thrown around a lot
             # could remove it from the base interface or remove it from this interface but we should pick one and stick with it.
             channel = make_pattern([channel,
                                     analog_event_handler.channel])
+            
         self.stream = self.device.tasks[channel]
+
+        if digital_event_handler is not None:
+            dig_channel = make_pattern([digital_event_handler.channel])
+            self.dig_stream = self.device.tasks[dig_channel]
 
     def _queue_wav(self, wav_file, start=False, event=None, **kwargs):
         """ Queue the wav file for playback
@@ -607,9 +641,10 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
             # Place the bit string at the start
             self._wav_data[-1, :len(bit_string)] = bit_string
 
-        if self._digital_event_handler is not None:
-            bit_value = self._digital_event_handler.to_bit_sequence(event)
-            self._dig_data = bit_value
+        if self.device._digital_event_handler is not None:
+            bit_value = self.device._digital_event_handler.to_bit_sequence(event)
+            self._dig_data = bit_value*np.ones(len(self._wav_data), dtype=np.uint32)
+            self._dig_data[-1] = 0
 
         self._get_stream(start=start, **kwargs)
 
@@ -626,13 +661,21 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
                                         rate=self.device.samplerate,
                                         sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
                                         samps_per_chan= self._wav_data.shape[0] if len(self._wav_data.shape) == 1 else self._wav_data.shape[1])
+       
         # I think we might want to set layout='group_by_scan_number' in .write()
-        self.stream.write(self._wav_data, auto_start=False)
-
-        # Write the digital code too?
-        if self._digital_event_handler is not None:
+        
+        if self.device._digital_event_handler is not None:
             print('Writing to digital port:', self._dig_data[0])
-            self.device._write_bool(self._dig_channels, self._dig_data, auto_start=False)
+            self.dig_stream.timing.cfg_samp_clk_timing(source=self.device.clock_channel,
+                                rate=self.device.samplerate,
+                                sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
+                                samps_per_chan= self._dig_data.shape[0])
+            self.dig_stream.triggers.start_trigger.cfg_dig_edge_start_trig(
+                self.stream.triggers.start_trigger.term)
+        
+            self.dig_stream.write(self._dig_data, auto_start=False)
+
+
 
         if start:
             self._play_wav(**kwargs)
@@ -650,17 +693,14 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
 
         logger.debug("Playing wavfile")
         events.write(event)
+        # Start digital task first because it is triggered by analog
+        if self.device._digital_event_handler is not None:
+            self.dig_stream.start()
+
         self.stream.start()
+        
         if is_blocking:
             self.wait_until_done()
-
-        # Zero out digital buffer
-        if self._digital_event_handler is not None:
-            nbits = self._digital_event_handler.action_bits
-            if self._digital_event_handler.on_off_bit :
-                nbits += 1
-            
-        #    self.device._write_bool(self._dig_channels, [False]*nbits)
         
         
 
@@ -677,9 +717,13 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
             logger.debug("Attempting to close stream")
             events.write(event)
             self.stream.stop()
+            if self.device._digital_event_handler is not None:
+                self.dig_stream.stop()
             logger.debug("Stream closed")
         except AttributeError:
             self.stream = None
+            if self.device._digital_event_handler is not None:
+                self.dig_stream = None
 
         try:
             self.wf.close()
@@ -687,6 +731,8 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
              self.wf = None
 
         self._wav_data = None
+        if self.device._digital_event_handler is not None:
+            self.dig_data = None
 
 
 

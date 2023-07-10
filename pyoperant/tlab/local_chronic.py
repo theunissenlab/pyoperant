@@ -518,7 +518,7 @@ class PanelSeewiesenNI(panels.BasePanel):
                                                           scaling=3.3,
                                                           metadata_bytes=40)
             # Create a digital event handler
-            digital_event_handler = events.EventDigitalHandler(channel= speaker + "/" + "port0", on_off_bit = True, action_bits=4)
+            digital_event_handler = events.EventDigitalHandler(channel= speaker + "/" + "port0", on_off_bit = False, action_bits=8)
             audio_out = hwio.AudioOutput(interface=speaker_out,
                                                  params={"channel": speaker + "/" + channel,
                                                          "analog_event_handler": analog_event_handler,
