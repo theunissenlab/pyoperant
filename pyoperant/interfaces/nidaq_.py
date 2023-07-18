@@ -43,7 +43,7 @@ def list_boolean_inputs():
     """ List the boolean inputs for each device """
 
     channels = dict()
-    for dev in nidaqmx.System().devices:
+    for dev in nidaqmx.system.System().devices:
         channels[dev.name] = dev.di_lines
 
     return channels
@@ -53,7 +53,7 @@ def list_boolean_outputs():
     """ List the boolean outputs for each device """
 
     channels = dict()
-    for dev in nidaqmx.System().devices:
+    for dev in nidaqmx.system.System().devices:
         channels[dev.name] = dev.do_lines
 
     return channels
@@ -215,7 +215,7 @@ class NIDAQmxInterface(base_.BaseInterface):
         task.out_stream.output_buf_size = 100    # This has to be at least 2 - should it be the length of the stimulus? 
         self.tasks[channel] = task
 
-    def _read_bool(self, channel, invert=False, event=None, **kwargs):
+    def _read_bool(self, channel=None, invert=False, event=None, **kwargs):
         """ Read a boolean value from a channel or group of channels
 
         Parameters
@@ -245,7 +245,7 @@ class NIDAQmxInterface(base_.BaseInterface):
 
         return value
 
-    def _write_bool(self, channel, value, event=None, is_blocking=False, auto_start = True, **kwargs):
+    def _write_bool(self, channel=None, value=0, event=None, is_blocking=False, auto_start = True, **kwargs):
         """ Write a boolean value to a channel or group of channels
 
         Parameters
