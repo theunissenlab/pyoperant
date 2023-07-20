@@ -377,7 +377,7 @@ class EventDigitalHandler(EventHandler):
     -------
     to_bit_sequence(event) - Serializes the event details into a string of bits
     """
-    def __init__(self, on_off_bit=True, action_bits=4,
+    def __init__(self, on_off_bit=True, action_bits=2,
                  **interface_params):
 
         self.on_off_bit = on_off_bit
@@ -396,7 +396,7 @@ class EventDigitalHandler(EventHandler):
         """ Does nothing """
         pass
 
-    def to_bit_sequence(self, event, on_off = True):
+    def to_bit_sequence(self, event):
         """ Creates an array of bits from the event. 
 
         Parameters
@@ -412,17 +412,18 @@ class EventDigitalHandler(EventHandler):
         # Set up int8 value of the event
         mod_value = 2**(self.action_bits)
         metadata = event['metadata']
-        event_value = int(metadata[4:8]) % mod_value   # Meta data as 4 chars as rep, 4 chars as triasl, and mdd5: see local_chronic.py 
-        event_value = np.asarray( [event_value], dtype=np.uint32)  # Requires uint32
-
-        if (self.on_off_bit):
-            event_value[0] = event_value[0]*10 + 1
+        val_int_code = int(metadata[4:8]) % mod_value   # Meta data as 4 chars as rep, 4 chars as triasl, and mdd5: see local_chronic.py 
         
-       # sequence = sequence + np.unpackbits(event_value).astype(bool).tolist()[-self.action_bits:]
+        if (self.on_off_bit):
+            val_int_code = val_int_code + mod_value 
 
-        self.map_to_bit = event_value
+        val_hex = val_int_code.to_bytes(1, 'little')
+        val_hexuint32 = val_hex+val_hex+val_hex+val_hex
+        val_uint32 = int.from_bytes(val_hexuint32, byteorder='little', signed=False)
+        dig_data = np.array([val_uint32], dtype=np.uint32)
+        self.map_to_bit = dig_data
 
-        return event_value
+        return dig_data[0]
 
     def close(self):
         """ Nothing needs to be done """

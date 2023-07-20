@@ -109,7 +109,6 @@ class BooleanInput(BaseIO):
             The current status reported by the interface
         """
 
-        print(self.params)
         self.last_value = self.interface._read_bool(event=event, **self.params)
         
         return self.last_value

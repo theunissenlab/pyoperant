@@ -208,7 +208,6 @@ class NIDAQmxInterface(base_.BaseInterface):
         # TODO: test multiple channels. What format should channels be in?
         logger.debug("Configuring digital output on channel(s) %s" % str(channel))
         task = nidaqmx.Task()
-        print(channel)
         task.do_channels.add_do_chan(channel)
         task.timing.cfg_samp_clk_timing(rate=self.samplerate,
                                         source=self.clock_channel)
@@ -413,7 +412,7 @@ class NIDAQmxInterface(base_.BaseInterface):
            digital_event_handler is not None:
             channel_bool = make_pattern([digital_event_handler.channel])
             dig_task = nidaqmx.Task()
-            dig_task.do_channels.add_do_chan(channel_bool)
+            dig_task.do_channels.add_do_chan(channel_bool, line_grouping=nidaqmx.constants.LineGrouping.CHAN_FOR_ALL_LINES)
             self._digital_event_handler = digital_event_handler
             self._dig_channels = channel_bool           
             self.tasks[channel_bool] = dig_task
@@ -633,8 +632,12 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
             self._wav_data[-1, :len(bit_string)] = bit_string
 
         if self.device._digital_event_handler is not None:
+            # bit_value is a 4 byte (32 bit) that is used for 4 sampling points since a ni port is 8bits = 1 byte
             bit_value = self.device._digital_event_handler.to_bit_sequence(event)
-            self._dig_data = bit_value*np.ones(len(self._wav_data), dtype=np.uint32)
+            nsamp = self._wav_data.shape[1]//4
+            
+            # This should really be nsamp + 1 to make sure the 0 starts after stimulus offset...
+            self._dig_data = bit_value*np.ones(nsamp+1, dtype=np.uint32)
             self._dig_data[-1] = 0
 
         self._get_stream(start=start, **kwargs)
@@ -658,10 +661,11 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
 
         if self.device._digital_event_handler is not None:
             print('Writing to digital port:', self._dig_data[0])
+            print('number of uint32:', self._dig_data.shape[0] )
             self.dig_stream.timing.cfg_samp_clk_timing(source=self.device.clock_channel,
                                 rate=self.device.samplerate,
                                 sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                                samps_per_chan= self._dig_data.shape[0])
+                                samps_per_chan= self._dig_data.shape[0]*4)
             self.dig_stream.triggers.start_trigger.cfg_dig_edge_start_trig(
                 self.stream.triggers.start_trigger.term)
         
@@ -693,7 +697,9 @@ class NIDAQmxAudioInterface(base_.AudioInterface):
         self.stream.start()
         
         if is_blocking:
-            self.wait_until_done()
+            self.stream.wait_until_done()
+            if self.device._digital_event_handler is not None:
+                self.dig_stream.wait_until_done()
         
         
 
