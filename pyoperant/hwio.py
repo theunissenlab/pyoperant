@@ -131,7 +131,10 @@ class BooleanInput(BaseIO):
         if input_time is not None:
             self.last_value = True
         else:
-            self.last_value = False
+            # here we need to see if it was triggered or not
+            self.last_value = self.interface._read_bool(**self.params)
+            logger.debug("Not Triggered, setting last value to %s"%self.last_value)
+            #self.last_value = False
 
         return input_time
 

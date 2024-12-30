@@ -100,13 +100,15 @@ class GoNoGoInterrupt(base.BaseExp):
                       'max_wait',
                       ]
 
-    def __init__(self, reward_value=12, *args, **kwargs):
+    def __init__(self, reward_value=12, timeout_secs=None, *args, **kwargs):
 
         super(GoNoGoInterrupt,  self).__init__(*args, **kwargs)
         self.start_immediately = False
-        self.reward_value = reward_value
+        self.reward_value = reward_value # time to keep reward light on
+        self.timeout_secs = timeout_secs # how long until auto quit
         self.pre_response_delay = self.parameters.get("pre_response_delay", .5)
-
+        self.punish_time = self.parameters.get("punish_time", 0) # Timeout for wrong response
+ 
     def trial_iter(self, block_queue):
         for self.this_block in self.block_queue:
             self.this_block.experiment = self
@@ -114,7 +116,11 @@ class GoNoGoInterrupt(base.BaseExp):
             for trial in self.this_block:
                 if not self.start_immediately:
                     logger.debug("Begin polling for a response")
-                    self.panel.response_port.poll()
+                    ret = self.panel.response_port.poll(self.timeout_secs) 
+                    if ret is None:
+                        # didnt get a peck in the timeout. End the experiment
+                        break
+
                 yield trial
 
     def trial_pre(self):
@@ -177,20 +183,13 @@ class GoNoGoInterrupt(base.BaseExp):
         # Would be better to just pol till stimulus is actually done
         s_wait = self.this_trial.stimulus.duration - self.pre_response_delay
         self.this_trial.response_time = self.panel.response_port.poll(s_wait)
-        #self.this_trial.response_time = self.panel.response_port.poll(self.this_trial.stimulus.duration)
         logger.debug("Received peck or timeout. Stopping playback")
 
         # Its janky, but allow the stimulus to finish...
         # it does suppress pecks in this cleanup period.
         # Thats why it would be better to link the polling period
         # with the playback completion itself
-        if not self.this_trial.response_time:
-            self.panel.speaker.stop()
-            # _start = time.time()
-            # self.panel.speaker.let_finish()
-            # logger.debug("go_no_go_interrupt.py: Waited {:.6f}s extra for stim to finish".format(time.time() - _start))
-        else:
-            self.panel.speaker.stop()
+        self.panel.speaker.stop()
 
         logger.debug("Playback stopped")
 
@@ -215,9 +214,11 @@ class GoNoGoInterrupt(base.BaseExp):
     
     def punish_main(self):
         """ Punish a incorrect non-interruption with a small delay """
-        logger.info("Quick timeout for incorrect wait")
+        logger.info("Quick %3.2f s timeout for incorrect wait"%self.punish_time)
         self.panel.response_port.off()
-        time.sleep(.5)
+        #self.panel.house_light.off()
+        time.sleep(self.punish_time)
+        #self.panel.house_light.on()
         self.panel.response_port.on()
 
 

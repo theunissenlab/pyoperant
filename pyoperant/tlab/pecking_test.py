@@ -7,7 +7,7 @@ import time
 import numpy as np
 
 import pyoperant.blocks as blocks_
-from pyoperant import configure
+from pyoperant import configure 
 from pyoperant import stimuli
 from pyoperant.tlab.custom_logging import PollingFilter, AudioPlaybackFilter
 from pyoperant.behavior.go_no_go_interrupt import GoNoGoInterrupt
@@ -169,8 +169,8 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
             self,
             block_queue=queues.block_queue,
             conditions=None,
-            inactivity_before_playback=[5.0, 20.0],
-            inactivity_before_playback_restart=3600.0,
+            inactivity_before_playback=[5.0, 10.0], # between 5 and 10 minutes of inactivity
+            inactivity_before_playback_restart=60.0 * 60, # if 1 hr goes by we can do playbacks again
             queue=queues.random_queue,
             queue_parameters=None,
             record_audio=None,
@@ -210,8 +210,9 @@ class PeckingAndPlaybackTest(PeckingTest, record_trials.RecordTrialsMixin):
         self.last_playback_reset = dt.datetime.now()
 
         super().__init__(*args, block_queue=block_queue, **kwargs)
-
-        if np.any([self.record_audio.values()]):
+        
+        self.panel.speaker.set_gain(self.gain)
+        if np.any(list(self.record_audio.values())):
             if not hasattr(self.panel, "mic"):
                 logger.error("Cannot record audio if panel has no mic.")
                 self.end()
@@ -563,3 +564,48 @@ class PeckingDMTS(PeckingTest):
         #self.panel.speaker.let_finish()
         #utils.wait(self.post_punish_delay)
         #self.panel.response_port.on()
+from build.lib.pyoperant.utils import get_object_from_string
+
+if __name__ == '__main__':
+    # Pecking Test  
+    from pyoperant import configure
+    import shutil
+    from pyoperant.tlab.chronic_playback import ChronicPlayback
+    import gc
+
+    playback_cfg = "I:\OperantEphys\HpiRed7670F\Configs\HpiRed7670F_playback_d1.yaml"
+    operant_cfg = "I:\OperantEphys\HpiRed7670F\Configs\HpiRed7670F_operant_d1.yaml" 
+
+    experiment_sequence = ['operant', 'playback']
+    cur_state = 0
+    while True:
+        cur_exp = experiment_sequence[cur_state]
+        if cur_exp == 'operant':
+            print("running operant")
+            operant_c = configure.ConfigureYAML.load(operant_cfg)
+            conditions = operant_c['conditions'].copy()
+            operant_c['timeout_secs'] = 20 * 60 # 20 mins idle time before playback experiment starts
+            conditions_list = []     
+            for condition_dict in conditions:
+                condition = get_object_from_string(condition_dict['class'])
+                conditions_list.append(condition(file_path=condition_dict["file_path"]))
+            operant_c['conditions'] = conditions_list
+            exp = PeckingTest(**operant_c)
+            # copy the yaml file used for this experiment to the experiment path
+            out_path = os.path.join(exp.experiment_path,"%s_%s_config.yaml"%(exp.subject.name,exp.timestamp))
+            shutil.copy(operant_cfg,out_path)
+            #run the experiment
+            exp.run()
+            del exp, operant_c
+        elif cur_exp == 'playback':
+            print("running playback")
+            playback_c = configure.ConfigureYAML.load(playback_cfg)
+            exp = ChronicPlayback(**playback_c)
+            out_path = os.path.join(exp.experiment_path,"%s_%s_config.yaml"%(exp.subject.name,exp.timestamp))
+            shutil.copy(playback_cfg,out_path)
+            exp.run()
+            del exp, playback_c
+        else:
+            raise ValueError("Unknown experiment %s"%cur_exp)
+        gc.collect()
+        cur_state = abs(cur_state - 1) # Toggle from 0 to 1 or 1 to 0
