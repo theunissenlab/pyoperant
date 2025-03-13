@@ -10,18 +10,30 @@ const int EN_PIN = 6;
 const int STEP_PIN = 7;
 const int DIR_PIN = 2;
 const int FEEDER_IOPORT=10; // what chan is sent for feeder
-const int ARD_BUTTON_PIN=3; // phyical button on arduino to test feeder
-long lastButtonPressTime=-1; // last time you pressed a button
-bool button_initiated_feed = false;
-const int SEED_SENSOR_PIN=5;
+
+// button for manual feeds
+const int FEED_BUTTON_PIN=3;
+
 // time settings
+const int switch_dur = 10;
+int dir_switch=10;
+int fake_step_counter = -1;
+long nextFakeStep = -1;
+
 int delay_time = 2; // msec
 long nextStep = -1;
 int feed_step_counter = -1;
-const int max_LED_delay = 300; //msec
-long LED_on_time = -1;
+const int msMaxFeederDelay = 300; //msec
+long delayedFeederStartTime = -1;
+bool bFeederStarted = 0;
+long msLastPress = 0;
 const int STEPS_PER_CYCLE = 400; // one revolutions
+// NEMA 17 standard motor: 1.8 deg = 200 steps per cycle native 16x microstepping = 3200 steps per rotation
+// 400 should be 1/8th the circle, 460 was used for auger feeder
 const int MS_DELAY_TIME = 2; // ideal time between steps
+
+// IR Sensor PIN
+const int IR_SENSOR_PIN = 5;
 
 // Digital Pin Settings
 const int DIG1_PIN = 53; // TTL
@@ -32,27 +44,15 @@ const int TTL_IPI = 10000; // 10 sec
 
 const int DIG2_PIN = 51;
 bool DIG2_ENABLED=true;
-const int DIG2_COPY_PIN = 4; // Peckport
+const int DIG2_COPY_PIN = 4; // PECKPORT
 
 const int DIG3_PIN = 49;
 bool DIG3_ENABLED=true;
-const int DIG3_COPY_PIN = LED_PIN;//10 engine LED 
-
-const int DIG4_PIN = 47;
-bool DIG4_ENABLED=true;
-const int DIG4_COPY_PIN = SEED_SENSOR_PIN; // Seed Sensor
-
-const int DIG5_PIN = 45;
-bool DIG5_ENABLED=true;
-const int DIG5_COPY_PIN = 9;//house light;
-
+const int DIG3_COPY_PIN = IR_SENSOR_PIN; // IR_SENSOR_PIN
 
 //const int feed
 void setup()
 {
-  
-
-   // myTime = millis();
   //set pin modes
   pinMode(EN_PIN, OUTPUT);
   digitalWrite(EN_PIN, HIGH); //deactivate driver (LOW active)
@@ -68,25 +68,16 @@ void setup()
   digitalWrite(DIG2_PIN,LOW);
   pinMode(DIG3_PIN, OUTPUT);
   digitalWrite(DIG3_PIN,LOW);
-  pinMode(DIG4_PIN, OUTPUT);
-  digitalWrite(DIG4_PIN, LOW);
-  pinMode(DIG5_PIN, OUTPUT);
-  digitalWrite(DIG5_PIN, LOW);
-  
-  
-  pinMode(ARD_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(SEED_SENSOR_PIN, INPUT);
-  digitalWrite(SEED_SENSOR_PIN, HIGH); // turn on the pullup
-
-
-  digitalWrite(EN_PIN, HIGH); //de-activate driver
+  pinMode(FEED_BUTTON_PIN,INPUT_PULLUP);
   // start serial port at the specified baud rate
   Serial.begin(baudRate);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for Leonardo only
   }
   randomSeed(analogRead(0));
+  delay(500);
   Serial.println("Initialized!");
+  nextStep = millis();
 }
 
 void loop()
@@ -102,18 +93,6 @@ void loop()
   // 4: Set the specified pin to INPUT
   // 5: Set the specified pin to INPUT_PULLUP
   // if we get a valid serial message, read the request:
-
-  // Check if the Arduino button is active
-  if (digitalRead(ARD_BUTTON_PIN) == LOW and millis() > lastButtonPressTime + 500){
-    lastButtonPressTime = millis();
-    // Start feeding
-    feed_step_counter = STEPS_PER_CYCLE;
-    digitalWrite(LED_PIN,HIGH);
-    digitalWrite(EN_PIN, LOW); //activate driver
-    nextStep = millis() + delay_time;
-    button_initiated_feed = true;
-  }
-
   if (Serial.available() >= 2) {
     // get incoming two bytes:
     Serial.readBytes(ioBytes, 2);
@@ -128,17 +107,14 @@ void loop()
           Serial.write(true); // not sure what to do here
           break;
         case 1:
-          // // Start feeding
-          // feed_step_counter = STEPS_PER_CYCLE;
-          // //digitalWrite(LED_PIN,HIGH);
-          // digitalWrite(EN_PIN, LOW); //activate driver
-          // nextStep = millis() + delay_time;
-          LED_on_time = millis() + random(max_LED_delay); // turn on LED with some delay less than max_LED_delay
+          //Start feeding after some randomized delay
+          delayedFeederStartTime = millis() + random(msMaxFeederDelay); // turn on LED with some delay less than maxFeederDelay
           break;
         case 2:
           // STOP FEEDING
+          bFeederStarted=false;
           feed_step_counter = -1;
-          LED_on_time = -1;
+          delayedFeederStartTime = -1;
           digitalWrite(LED_PIN,LOW);
           digitalWrite(EN_PIN, HIGH); //de-activate driver
           break;
@@ -175,26 +151,38 @@ void loop()
       }
     }    
   }
-
-  // if we started via the physical button, we end automatically after feeding is done
-  if (feed_step_counter <= 0 and button_initiated_feed){
-    if (millis() > nextStep){
-      button_initiated_feed = false;
-      // STOP FEEDING
-      feed_step_counter = -1;
-      digitalWrite(LED_PIN,LOW);
-      digitalWrite(EN_PIN, HIGH); //de-activate driver
+  // BUTTON HANDLING
+  if (!digitalRead(FEED_BUTTON_PIN)){
+    // can only press button once per second
+    if (millis() - msLastPress > 1000){
+      msLastPress = millis();
+      // Start feeding 
+      if (delayedFeederStartTime < 0 & !bFeederStarted){
+        delayedFeederStartTime=millis();
+      }
+      else if (bFeederStarted){
+        // STOP FEEDING
+        feed_step_counter = -1;
+        delayedFeederStartTime = -1;
+        bFeederStarted = false;
+        digitalWrite(LED_PIN,LOW);
+        digitalWrite(EN_PIN, HIGH); //de-activate driver
+      }
     }
   }
 
-  if (LED_on_time > 0){
-    if ( millis() > LED_on_time){
+
+  // FEEDER HANDLING
+  if (delayedFeederStartTime > 0){
+    if ( millis() > delayedFeederStartTime){
       digitalWrite(LED_PIN,HIGH);
-      LED_on_time = -1;
+      delayedFeederStartTime = -1;
       // Start feeding
       feed_step_counter = STEPS_PER_CYCLE;
       //digitalWrite(LED_PIN,HIGH);
+      bFeederStarted=true;
       digitalWrite(EN_PIN, LOW); //activate driver
+      digitalWrite(DIR_PIN, LOW); // correct Direction
       nextStep = millis() + delay_time;
     }
   }
@@ -206,8 +194,23 @@ void loop()
       nextStep = millis() + delay_time;
     }
   }
-
-  
+  else{
+    // if there are fake steps to do
+    if(fake_step_counter > 0){
+      if (millis() > nextFakeStep){
+        //digitalWrite(DIR_PIN, !digitalRead(DIR_PIN));
+        if (dir_switch <= 0){
+          digitalWrite(DIR_PIN, !digitalRead(DIR_PIN));
+          dir_switch = switch_dur;
+        }
+        else{
+          dir_switch--;
+        }
+        digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));
+        nextFakeStep = millis() + delay_time;
+      }
+    }
+  }
   
   if(DIG1_ENABLED){
     if (millis() > DIG1_NEXT){
@@ -228,14 +231,6 @@ void loop()
 
   if(DIG3_ENABLED){
     digitalWrite(DIG3_PIN, digitalRead(DIG3_COPY_PIN));
-  }
-
-  if(DIG4_ENABLED){
-    digitalWrite(DIG4_PIN, digitalRead(DIG4_COPY_PIN));
-  }
-
-  if(DIG5_ENABLED){
-    digitalWrite(DIG5_PIN, digitalRead(DIG5_COPY_PIN));
   }
 
   //digitalWrite(STEP_PIN, !digitalRead(STEP_PIN));

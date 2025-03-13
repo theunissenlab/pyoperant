@@ -15,7 +15,7 @@ const int FEEDER_IOPORT=10; // what chan is sent for feeder
 int delay_time = 2; // msec
 long nextStep = -1;
 int feed_step_counter = -1;
-const int STEPS_PER_CYCLE = 200; // one revolutions
+const int STEPS_PER_CYCLE = 375; // one revolutions
 const int MS_DELAY_TIME = 2; // ideal time between steps
 
 // Digital Pin Settings
@@ -31,7 +31,7 @@ const int DIG2_COPY_PIN = 4;
 
 const int DIG3_PIN = 49;
 bool DIG3_ENABLED=true;
-const int DIG3_COPY_PIN = 10;
+const int DIG3_COPY_PIN = 11;
 
 //const int feed
 void setup()

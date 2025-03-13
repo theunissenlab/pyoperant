@@ -52,7 +52,7 @@ class Panel131(panels.BasePanel):
 
     _default_sound_file = "C:/DATA/stimuli/stim_test/1.wav"
 
-    def __init__(self, speaker="Dev1", channel="ao0", mic=None, use_nidaq=True, input_channel=None, name=None, *args, **kwargs):
+    def __init__(self, speaker="Dev1", channel="ao0", mic=None, use_nidaq=True, use_arduino=True, input_channel=None, name=None, *args, **kwargs):
         super(Panel131, self).__init__(self, *args, **kwargs)
         self.name = name
 
@@ -76,12 +76,14 @@ class Panel131(panels.BasePanel):
         audio_out = hwio.AudioOutput(interface=speaker_out,
                                      params={"channel": speaker + "/" + channel,
                                              "analog_event_handler": analog_event_handler})
-        
-        arduino = arduino_.ArduinoInterface(device_name="COM5",
-                                            baud_rate=115200)
-        ttl_input = hwio.BooleanInput(name="TTL", interface=arduino,
-                                    params=dict(channel=53))
-        self.ttl_monitor = components.TTLMonitor(input_=ttl_input)
+        if use_arduino:
+            arduino = arduino_.ArduinoInterface(device_name="COM9",
+                                                baud_rate=115200)
+            ttl_input = hwio.BooleanInput(name="TTL", interface=arduino,
+                                        params=dict(channel=53))
+            self.ttl_monitor = components.TTLMonitor(input_=ttl_input)
+        else:
+            self.ttl_monitor=None
         
         self.mic = None
         if mic is not None:
@@ -110,19 +112,23 @@ class Panel131(panels.BasePanel):
     def reset(self):
         if self.mic:
             self.mic.input.interface.close()
-        self.ttl_monitor.stop()
+        if self.ttl_monitor:
+            self.ttl_monitor.stop()
 
     def sleep(self):
-        self.ttl_monitor.stop()
+        if self.ttl_monitor:
+            self.ttl_monitor.stop()
         if self.mic:
             self.mic.input.interface.close()
 
     def ready(self):
-        self.ttl_monitor.start()
+        if self.ttl_monitor:
+            self.ttl_monitor.start()
         pass
 
     def idle(self):
-        self.ttl_monitor.stop()
+        if self.ttl_monitor:
+            self.ttl_monitor.stop()
         pass
 
     def poll_then_sound(self, timeout=None):
@@ -145,7 +151,7 @@ class PanelWithInput(Panel131):
 
 class Panel131GUI(Panel131):
     def __init__(self, *args, **kwargs):
-        super(Panel131GUI, self).__init__(*args, **kwargs)
+        super(Panel131GUI, self).__init__(use_arduino=False,*args, **kwargs)
 
         self.state = {}
         self.gui = tkgui_.TkInterface(self.state)
@@ -171,7 +177,7 @@ class Panel131GUI(Panel131):
         self.play_button = components.Button(IR=play_input)
 
 class Panel131Operant(panels.BasePanel):
-    def __init__(self, arduino="COM5", speaker="Dev1", channel='ao0', use_nidaq=True, mic=None, name=None,
+    def __init__(self, arduino="COM9", speaker="Dev1", channel='ao0', use_nidaq=True, mic=None, name=None,
                  baud_rate=115200, *args, **kwargs):
         super(Panel131Operant, self).__init__(self, *args, **kwargs)
         if arduino is None:
@@ -488,10 +494,10 @@ if __name__ == '__main__':
     from pyoperant import configure
     import shutil
     from pyoperant.tlab.pecking_test import PeckingTest
-    cfg = "D:\OperantEphys\HpiWhi5668M\Configs\OperantEphys_HpiWhi5668M_interrupt_rev.yaml"
+    cfg = "I:\OperantEphys\HpiRed7670F\Configs\HpiRed7670F_operant_shaping_2v2.yaml" 
     c = configure.ConfigureYAML.load(cfg)
     conditions = c['conditions'].copy()
-    conditions_list = []
+    conditions_list = []     
     for condition_dict in conditions:
         condition = get_object_from_string(condition_dict['class'])
         conditions_list.append(condition(file_path=condition_dict["file_path"]))
